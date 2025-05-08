@@ -1,0 +1,6 @@
+TransactionID,AccountID,CustomerID,TransactionDate,TransactionAmount,TransactionType,MerchantID,MerchantName,BranchID,IsApproved,TransactionDuration,PreviousTransactionDate,Location,FraudFlag,TransactionScore
+1000001,ACC78945,CUST56789,2025-05-08,1245.67,DEPOSIT,null,null,BR001,true,5.2,2025-05-01,New York,false,0.92
+1000002,ACC78946,CUST12345,2025-05-08,986.50,WITHDRAWAL,null,null,BR001,true,3.7,2025-05-03,Chicago,false,0.85
+1000003,ACC78947,CUST56790,2025-05-08,567.89,PURCHASE,MERCH001,TestMerchant,BR002,true,8.1,2025-05-05,Los Angeles,false,0.78
+1000004,ACC78948,CUST56791,2025-05-08,234.56,PAYMENT,MERCH002,AnotherMerchant,BR002,true,4.3,2025-05-04,Boston,false,0.95
+1000005,ACC78949,CUST56792,2025-05-08,2000.00,TRANSFER,null,null,BR003,true,6.8,2025-05-02,Dallas,false,0.88 

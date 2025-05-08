@@ -1,0 +1,181 @@
+name: MLOps Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9]
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        
+    - name: Run tests
+      run: |
+        pytest tests/
+
+  process-data:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        
+    - name: Process data
+      run: |
+        mkdir -p data/processed
+        python data/processed/data_processor.py
+        
+    - name: Upload processed data
+      uses: actions/upload-artifact@v3
+      with:
+        name: processed-data
+        path: data/processed/
+
+  generate-embeddings:
+    needs: process-data
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        
+    - name: Download processed data
+      uses: actions/download-artifact@v3
+      with:
+        name: processed-data
+        path: data/processed/
+        
+    - name: Generate embeddings
+      run: |
+        mkdir -p embeddings/output
+        python embeddings/embedder.py
+        
+    - name: Upload embeddings
+      uses: actions/upload-artifact@v3
+      with:
+        name: embeddings
+        path: embeddings/output/
+
+  build-vector-store:
+    needs: generate-embeddings
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        
+    - name: Download embeddings
+      uses: actions/download-artifact@v3
+      with:
+        name: embeddings
+        path: embeddings/output/
+        
+    - name: Build vector store
+      run: |
+        mkdir -p data/vector_db
+        python embeddings/vector_store.py
+        
+    - name: Upload vector store
+      uses: actions/upload-artifact@v3
+      with:
+        name: vector-store
+        path: data/vector_db/
+
+  build-and-deploy:
+    needs: build-vector-store
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        
+    - name: Download vector store
+      uses: actions/download-artifact@v3
+      with:
+        name: vector-store
+        path: data/vector_db/
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+      
+    - name: Build Docker image
+      run: |
+        docker build -t ai-alert-system:latest .
+        
+    # In a real-world scenario, you would add steps to:
+    # 1. Push the Docker image to a registry
+    # 2. Deploy the application to a cloud service
+    # 3. Run integration tests
+    
+    - name: Run API tests
+      run: |
+        # Start the API in the background
+        docker run -d -p 8000:8000 --name api-container ai-alert-system:latest
+        
+        # Give the API time to start
+        sleep 10
+        
+        # Run API health check
+        curl -f http://localhost:8000/health || exit 1
+        
+        # Stop the container
+        docker stop api-container
+
