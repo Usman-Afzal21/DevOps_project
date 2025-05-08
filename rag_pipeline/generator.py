@@ -13,6 +13,7 @@ from groq import Groq  # Import Groq client
 from typing import List, Dict, Any, Optional, Tuple
 import sys
 import time
+import json
 
 # No dotenv loading - direct API key usage
 
@@ -33,8 +34,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Hardcoded API key for Groq
-GROQ_API_KEY = "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"
+# Model constants
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "your-api-key-here")
+LLM_MODEL = "llama-3.3-70b-versatile"
+
+# System prompt for RAG
+SYSTEM_PROMPT = """You are an AI assistant for a banking system that generates detailed alerts based on transaction data.
+Your task is to analyze the provided context and generate a JSON alert with the following components:
+1. A clear, attention-grabbing title that summarizes the issue
+2. A detailed description of what was detected and why it matters
+3. A list of recommended actions that banking staff should take
+
+Format your response as a valid JSON object with the following structure:
+{
+  "title": "Clear, specific alert title",
+  "description": "Detailed description of the alert, including what was detected and why it matters",
+  "recommended_actions": ["Action 1", "Action 2", "Action 3"]
+}
+
+Make your alerts professional, actionable, and valuable for banking staff.
+"""
 
 class AlertGenerator:
     """
@@ -236,105 +255,171 @@ class AlertGenerator:
         # Generate response
         return self.generate_llm_response(prompt)
 
-def generate_alert(query: str, 
-                  branch: Optional[str] = None, 
-                  alert_type: str = "general",
-                  start_date: Optional[str] = None,
-                  end_date: Optional[str] = None,
-                  compare_with: Optional[str] = None,
-                  timeframe: str = "recent") -> str:
+def get_groq_client(api_key=None):
     """
-    High-level function to generate alerts of various types.
+    Get or create a Groq client.
     
     Args:
-        query: User query or topic for the alert
-        branch: Branch to focus on (if applicable)
-        alert_type: Type of alert to generate ('general', 'branch', 'fraud', 'comparison', 'trend')
-        start_date: Start date for time range (if applicable)
-        end_date: End date for time range (if applicable)
-        compare_with: Second branch for comparison (if applicable)
-        timeframe: Description of the time period
+        api_key: Optional API key for Groq
         
     Returns:
-        Generated alert string
+        Groq client instance
     """
+    from groq import Groq
+    
+    # Use provided key, environment variable, or default from settings
+    if api_key:
+        client_api_key = api_key
+    else:
+        # Try to get from environment
+        client_api_key = os.environ.get("GROQ_API_KEY", GROQ_API_KEY)
+    
+    # Initialize and return client
+    return Groq(api_key=client_api_key)
+
+def generate_alert(query, timeframe=None, branch=None, severity=None, groq_api_key=None):
+    """
+    Generate an alert based on a query and optional parameters.
+    
+    Args:
+        query: The query or description for alert generation
+        timeframe: Optional timeframe for the alert
+        branch: Optional branch ID for the alert
+        severity: Optional severity for the alert
+        groq_api_key: Optional API key for Groq
+    
+    Returns:
+        Dictionary with alert details
+    """
+    logger.info(f"Generating general alert for query: {query}")
+    
+    # Try using the RAG pipeline first
     try:
-        # Try the RAG pipeline first
+        # Initialize vector store and retriever
+        vector_store = TransactionVectorStore(persist_directory="data/vector_db")
+        
+        # Create collections safely - if they exist already, this won't fail
         try:
-            # Initialize the vector store and retriever
-            vector_store = TransactionVectorStore(persist_directory="data/vector_db")
             vector_store.create_transaction_collection()
             vector_store.create_summary_collection()
+        except Exception as collection_error:
+            logger.warning(f"Error creating collections: {collection_error}. Continuing with existing collections.")
+        
+        # Initialize retriever with vector store
+        retriever = TransactionRetriever(vector_store)
+        
+        # Get context from vector store with better error handling
+        try:
+            context = retriever.retrieve(query)
+            # Format context for the prompt
+            formatted_context = "\n\n".join([f"Source {i+1}:\n{doc}" for i, doc in enumerate(context)])
+        except Exception as retrieval_error:
+            logger.warning(f"Error retrieving context: {retrieval_error}. Proceeding without context.")
+            formatted_context = "No relevant context found due to retrieval error."
+        
+        # Create message structure with context
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Query: {query}\n\nContext:\n{formatted_context}"}
+        ]
+        
+        # Include optional parameters if provided
+        query_params = {}
+        if timeframe:
+            query_params["timeframe"] = timeframe
+        if branch:
+            query_params["branch"] = branch
+        if severity:
+            query_params["severity"] = severity
+        
+        if query_params:
+            params_str = ", ".join([f"{k}={v}" for k, v in query_params.items()])
+            messages.append({"role": "user", "content": f"Additional parameters: {params_str}"})
+        
+        # Use Groq LLM for generation with RAG context
+        groq_response = get_groq_client(groq_api_key).chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=1000,
+            response_format={"type": "json_object"}
+        )
+        
+        # Extract and parse the response
+        content = groq_response.choices[0].message.content
+        result = json.loads(content)
+        
+        logger.info(f"Successfully generated RAG response ({len(content)} chars)")
+        return result
+        
+    except Exception as e:
+        logger.error(f"RAG pipeline error: {str(e)}. Trying direct LLM approach.")
+        
+        # Fallback to direct LLM approach without RAG
+        try:
+            # Generate a system message for alert generation
+            system_message = """You are a banking alert system that generates detailed, actionable alerts based on transaction data.
+Generate a JSON response with the following structure:
+{
+  "title": "Clear, specific alert title",
+  "description": "Detailed description of the alert, including what was detected and why it matters",
+  "recommended_actions": ["Action 1", "Action 2", "Action 3"]
+}
+Make the alert specific, actionable, and valuable for banking professionals."""
             
-            retriever = TransactionRetriever(vector_store)
+            # Create a prompt for direct generation
+            direct_prompt = f"""Generate a detailed banking alert based on this query: {query}
             
-            # Create an AlertGenerator with direct Groq initialization
-            generator = AlertGenerator(retriever, model_name="llama-3.3-70b-versatile")
+If timeframe is specified: {timeframe if timeframe else 'No specific timeframe'}
+If branch is specified: {branch if branch else 'No specific branch'}
+If severity is specified: {severity if severity else 'No specific severity'}
+
+Provide a clear title, detailed description of what was detected, and 3-5 specific recommended actions.
+"""
             
-            # Generate the appropriate type of alert
-            if alert_type == "branch" and branch:
-                return generator.generate_branch_alert(branch, timeframe)
-            elif alert_type == "fraud":
-                return generator.generate_fraud_alert(query)
-            elif alert_type == "comparison" and branch and compare_with:
-                return generator.generate_comparative_alert(branch, compare_with, timeframe)
-            elif alert_type == "trend" and start_date and end_date:
-                return generator.generate_trend_alert(start_date, end_date, branch)
-            else:
-                # Default to general alert
-                return generator.generate_general_alert(query)
-        except Exception as rag_error:
-            # If RAG pipeline fails, log the error and try the direct approach
-            logger.error(f"RAG pipeline error: {rag_error}. Trying direct LLM approach.")
-            
-            # Create a description based on the alert type
-            if alert_type == "general":
-                description = "a general overview of banking operations"
-            elif alert_type == "branch" and branch:
-                description = f"an analysis of the {branch} branch's performance during {timeframe}"
-            elif alert_type == "fraud":
-                description = "potential fraud patterns and risk assessment in banking transactions"
-            elif alert_type == "comparison" and branch and compare_with:
-                description = f"a comparison between {branch} and {compare_with} branches during {timeframe}"
-            elif alert_type == "trend" and start_date and end_date:
-                time_desc = f"from {start_date} to {end_date}"
-                if branch:
-                    time_desc += f" for {branch} branch"
-                description = f"trend analysis of banking transactions {time_desc}"
-            else:
-                description = "insights about banking transactions based on available data"
-            
-            # Create a direct prompt
-            prompt = f"""
-            Generate {description}. 
-            
-            Query: {query}
-            
-            Your response should be professional, concise, and formatted as a banking alert
-            with relevant insights, patterns, and recommendations.
-            """
-            
-            # Use direct Groq client
-            from groq import Groq
-            client = Groq(api_key=GROQ_API_KEY)
-            
-            completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+            # Use Groq LLM for direct generation
+            direct_response = get_groq_client(groq_api_key).chat.completions.create(
+                model=LLM_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are a banking AI assistant that generates concise, professional alerts based on transaction data."},
-                    {"role": "user", "content": prompt}
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": direct_prompt}
                 ],
-                max_tokens=1024,
-                temperature=0.2
+                temperature=0.3,
+                max_tokens=1000,
+                response_format={"type": "json_object"}
             )
             
-            response = completion.choices[0].message.content
-            logger.info(f"Successfully generated direct response ({len(response)} chars)")
-            return response
+            # Extract and try to parse the response
+            content = direct_response.choices[0].message.content
+            logger.info(f"Successfully generated direct response ({len(content)} chars)")
             
-    except Exception as e:
-        logger.error(f"Error generating alert: {str(e)}")
-        return f"Error generating alert: {str(e)}"
+            try:
+                result = json.loads(content)
+                return result
+            except json.JSONDecodeError:
+                # If JSON parsing fails, create a simple structured response
+                logger.warning("Failed to parse LLM response as JSON. Creating basic structure.")
+                
+                # Extract title and description using basic string manipulation
+                lines = content.strip().split('\n')
+                title = next((line for line in lines if line.strip()), "Alert Generated")
+                description = content
+                
+                return {
+                    "title": title[:100],  # Limit title length
+                    "description": description,
+                    "recommended_actions": ["Review the alert details", "Investigate related transactions", "Consider updating monitoring rules"]
+                }
+                
+        except Exception as inner_e:
+            logger.error(f"Direct LLM approach also failed: {str(inner_e)}. Returning basic alert.")
+            
+            # Return a very basic alert if all else fails
+            return {
+                "title": f"Alert for: {query[:50]}...",
+                "description": f"Alert generated for query: {query}",
+                "recommended_actions": ["Review system logs", "Investigate alert generation failure", "Contact support if issue persists"]
+            }
 
 def test_groq_client() -> str:
     """

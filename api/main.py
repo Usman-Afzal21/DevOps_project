@@ -85,7 +85,6 @@ async def api_generate_alert(request: AlertRequest):
         alert = generate_alert(
             query=request.query,
             branch=request.branch,
-            alert_type=request.alert_type,
             start_date=request.start_date,
             end_date=request.end_date,
             compare_with=request.compare_with,
@@ -143,7 +142,6 @@ async def get_general_alerts():
     try:
         alert = generate_alert(
             query="Generate a general overview alert about banking operations",
-            alert_type="general",
             timeframe="recent"
         )
         return {"alert": alert, "alert_type": "general"}
@@ -158,7 +156,6 @@ async def get_branch_alerts(branch_id: str):
         alert = generate_alert(
             query=f"Generate insights for {branch_id} branch",
             branch=branch_id,
-            alert_type="branch",
             timeframe="recent"
         )
         return {"alert": alert, "alert_type": "branch", "branch": branch_id}
@@ -172,7 +169,6 @@ async def get_fraud_alerts():
     try:
         alert = generate_alert(
             query="Detect potential fraud patterns in recent transactions",
-            alert_type="fraud",
             timeframe="recent"
         )
         return {"alert": alert, "alert_type": "fraud"}
@@ -191,7 +187,6 @@ async def get_comparison_alerts(
             query=f"Compare performance between {branch1} and {branch2} branches",
             branch=branch1,
             compare_with=branch2,
-            alert_type="comparison",
             timeframe="recent"
         )
         return {"alert": alert, "alert_type": "comparison", "branch1": branch1, "branch2": branch2}
@@ -209,7 +204,6 @@ async def get_trend_alerts(
         alert = generate_alert(
             query=f"Analyze trends for {branch} branch over the last {period}",
             branch=branch,
-            alert_type="trend",
             timeframe=period
         )
         return {"alert": alert, "alert_type": "trend", "branch": branch, "period": period}

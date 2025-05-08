@@ -1,0 +1,213 @@
+[
+  {
+    "id": "alert_1_20250509012458",
+    "type": "large_transactions",
+    "severity": "medium",
+    "timestamp": "2025-05-09T01:24:58.272565",
+    "status": "new",
+    "anomaly_data": {
+      "type": "large_transactions",
+      "severity": "medium",
+      "count": 26,
+      "threshold": 3.6418186379955793,
+      "data": [
+        {
+          "TransactionID": "TX000177",
+          "TransactionAmount": 3.648508187235568,
+          "TransactionType": "Debit",
+          "Location": "El Paso"
+        },
+        {
+          "TransactionID": "TX000191",
+          "TransactionAmount": 3.854066393933983,
+          "TransactionType": "Debit",
+          "Location": "Washington"
+        },
+        {
+          "TransactionID": "TX000341",
+          "TransactionAmount": 5.249977915921802,
+          "TransactionType": "Debit",
+          "Location": "San Antonio"
+        },
+        {
+          "TransactionID": "TX000376",
+          "TransactionAmount": 3.751253030883659,
+          "TransactionType": "Debit",
+          "Location": "El Paso"
+        },
+        {
+          "TransactionID": "TX000476",
+          "TransactionAmount": 3.884043632410835,
+          "TransactionType": "Debit",
+          "Location": "Oklahoma City"
+        },
+        {
+          "TransactionID": "TX000487",
+          "TransactionAmount": 3.8339902090797713,
+          "TransactionType": "Debit",
+          "Location": "Nashville"
+        },
+        {
+          "TransactionID": "TX000654",
+          "TransactionAmount": 5.555266112570064,
+          "TransactionType": "Debit",
+          "Location": "Portland"
+        },
+        {
+          "TransactionID": "TX000756",
+          "TransactionAmount": 4.487870864587428,
+          "TransactionType": "Debit",
+          "Location": "Phoenix"
+        },
+        {
+          "TransactionID": "TX000899",
+          "TransactionAmount": 4.226674903275976,
+          "TransactionType": "Debit",
+          "Location": "San Diego"
+        },
+        {
+          "TransactionID": "TX001134",
+          "TransactionAmount": 3.886510330891216,
+          "TransactionType": "Debit",
+          "Location": "Louisville"
+        }
+      ],
+      "timestamp": "2025-05-09T01:24:58.264045"
+    },
+    "title": "Unusual Debit Activity: 26 Large Transactions Above $3.64 Detected",
+    "description": "Our system has identified 26 debit transactions exceeding the threshold of $3.64, indicating potentially unusual activity. These transactions, occurring across various locations including El Paso, Washington, San Antonio, Oklahoma City, Nashville, Portland, Phoenix, San Diego, and Louisville, may warrant further review to determine their legitimacy and ensure the security of the accounts involved. The transactions range in amount from $3.65 to $5.55, with the majority being debits. This alert is categorized as medium severity due to the number and distribution of these transactions, which could suggest either isolated incidents or a more coordinated activity.",
+    "recommended_actions": [
+      "Review each transaction individually to verify their authenticity and ensure they are legitimate account activities",
+      "Contact the account holders associated with these transactions to confirm the transactions were authorized and to gather more information if necessary",
+      "Conduct a thorough analysis of recent account activity for these and similar accounts to identify any patterns or additional suspicious transactions that may have been missed"
+    ]
+  },
+  {
+    "id": "alert_2_20250509012502",
+    "type": "high_login_attempts",
+    "severity": "medium",
+    "timestamp": "2025-05-09T01:25:02.991299",
+    "status": "new",
+    "anomaly_data": {
+      "type": "high_login_attempts",
+      "severity": "medium",
+      "count": 95,
+      "threshold": 3,
+      "data": [
+        {
+          "TransactionID": "TX000024",
+          "LoginAttempts": 3.1124756489183207
+        },
+        {
+          "TransactionID": "TX000027",
+          "LoginAttempts": 6.431744946342571
+        },
+        {
+          "TransactionID": "TX000033",
+          "LoginAttempts": 3.1124756489183207
+        },
+        {
+          "TransactionID": "TX000092",
+          "LoginAttempts": 4.772110297630446
+        },
+        {
+          "TransactionID": "TX000148",
+          "LoginAttempts": 6.431744946342571
+        },
+        {
+          "TransactionID": "TX000232",
+          "LoginAttempts": 3.1124756489183207
+        },
+        {
+          "TransactionID": "TX000267",
+          "LoginAttempts": 4.772110297630446
+        },
+        {
+          "TransactionID": "TX000275",
+          "LoginAttempts": 6.431744946342571
+        },
+        {
+          "TransactionID": "TX000357",
+          "LoginAttempts": 3.1124756489183207
+        },
+        {
+          "TransactionID": "TX000395",
+          "LoginAttempts": 6.431744946342571
+        }
+      ],
+      "timestamp": "2025-05-09T01:24:58.266624"
+    },
+    "title": "Elevated Login Attempts Detected Across 95 Transactions",
+    "description": "Our system has identified 95 transactions with high login attempts exceeding the threshold of 3, indicating potential security risks. The transactions in question have login attempt values ranging from 3.11 to 6.43, with some transactions showing significantly higher numbers of attempts. This anomaly may suggest automated login attempts or potential brute-force attacks targeting customer accounts. It is crucial to investigate these transactions to prevent unauthorized access and protect customer data.",
+    "recommended_actions": [
+      "Review the list of affected transactions (TX000024, TX000027, TX000033, etc.) and verify the authenticity of each login attempt",
+      "Enhance security measures by temporarily locking accounts with excessive login attempts and requiring additional verification steps for login",
+      "Conduct a thorough analysis of system logs to identify patterns or sources of the high login attempts, potentially indicating a larger security issue"
+    ]
+  },
+  {
+    "id": "alert_3_20250509012506",
+    "type": "high_large_transaction_ratio",
+    "severity": "medium",
+    "timestamp": "2025-05-09T01:25:06.489008",
+    "status": "new",
+    "anomaly_data": {
+      "type": "high_large_transaction_ratio",
+      "severity": "medium",
+      "count": 125,
+      "threshold": 0.15,
+      "data": [
+        {
+          "LargeTransactionRatio": 1.0,
+          "TransactionCount": 1
+        },
+        {
+          "LargeTransactionRatio": 1.0,
+          "TransactionCount": 1
+        },
+        {
+          "LargeTransactionRatio": 1.0,
+          "TransactionCount": 1
+        },
+        {
+          "LargeTransactionRatio": 1.0,
+          "TransactionCount": 1
+        },
+        {
+          "LargeTransactionRatio": 1.0,
+          "TransactionCount": 1
+        },
+        {
+          "LargeTransactionRatio": 1.0,
+          "TransactionCount": 1
+        },
+        {
+          "LargeTransactionRatio": 1.0,
+          "TransactionCount": 1
+        },
+        {
+          "LargeTransactionRatio": 1.0,
+          "TransactionCount": 1
+        },
+        {
+          "LargeTransactionRatio": 1.0,
+          "TransactionCount": 2
+        },
+        {
+          "LargeTransactionRatio": 0.5,
+          "TransactionCount": 2
+        }
+      ],
+      "timestamp": "2025-05-09T01:24:58.271568"
+    },
+    "title": "Unusually High Ratio of Large Transactions Detected Across 125 Branches",
+    "description": "Our system has identified 125 branches with a higher than expected ratio of large transactions, with an average large transaction ratio of 0.92, exceeding the threshold of 0.15. This anomaly may indicate potential money laundering or other illicit activities. The data suggests that these branches have processed a disproportionately high number of large transactions, which warrants further investigation to determine the legitimacy of these transactions and ensure compliance with regulatory requirements.",
+    "recommended_actions": [
+      "Conduct a thorough review of transaction records for the affected branches to identify any suspicious patterns or activities",
+      "Verify the identity and legitimacy of customers involved in large transactions to prevent potential money laundering or terrorist financing",
+      "Collaborate with the compliance team to ensure that all branches are adhering to anti-money laundering (AML) and know-your-customer (KYC) regulations",
+      "Consider implementing additional monitoring and reporting measures to detect and prevent similar anomalies in the future",
+      "Provide training to branch staff on identifying and reporting suspicious transactions to enhance overall vigilance and compliance"
+    ]
+  }
+]

@@ -4,17 +4,46 @@ import json
 import pandas as pd
 import datetime
 import time
+import os
+import sys
+import logging
+from typing import List, Dict, Any, Optional
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Workaround for torch classes runtime error in streamlit
+try:
+    import torch
+    # Avoid referencing torch.classes directly which causes errors
+    torch._C._DisableTorchScriptMethod = torch._C._DisableTorchScriptMethod
+except ImportError:
+    pass
+except AttributeError:
+    pass
+
+# Add project directories to path for imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from rag_pipeline.generator import generate_alert
+from rag_pipeline.alert_generator import AutomaticAlertGenerator
+from data.data_versioning import DataVersionManager
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Set page configuration
 st.set_page_config(
-    page_title="AI-powered Alert Management System",
-    page_icon="🔔",
+    page_title="Banking Alert Management System",
+    page_icon="��",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # Constants
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:8001"
 BRANCH_LIST = [
     "New York", "San Francisco", "Chicago", "Houston", "Los Angeles",
     "Miami", "Seattle", "Boston", "Dallas", "Denver", "Atlanta", 
@@ -24,28 +53,65 @@ BRANCH_LIST = [
 
 # Functions to interact with the API
 def get_general_alert():
+    """Get general insights about banking operations with fallback mechanism"""
     try:
-        response = requests.get(f"{API_URL}/alerts/general")
+        response = requests.get(f"{API_URL}/alerts/general", timeout=5)  # Add timeout to avoid long waits
         return response.json()["alert"]
     except Exception as e:
-        st.error(f"Error fetching general alert: {str(e)}")
-        return "Unable to fetch alert at this time."
+        logger.warning(f"Error fetching general alert from API: {str(e)}")
+        try:
+            # Direct fallback using local generator
+            alert_content = generate_alert(
+                query="Generate a general overview alert about banking operations",
+                timeframe="recent"
+            )
+            if isinstance(alert_content, dict):
+                return alert_content.get('description', "Unable to generate insights.")
+            return alert_content
+        except Exception as inner_e:
+            logger.error(f"Error in fallback for general alert: {str(inner_e)}")
+            return "Unable to fetch alert at this time. API unavailable and fallback failed."
 
 def get_branch_alert(branch):
+    """Get alerts for a specific branch with fallback mechanism"""
     try:
-        response = requests.get(f"{API_URL}/alerts/branch/{branch}")
+        response = requests.get(f"{API_URL}/alerts/branch/{branch}", timeout=5)
         return response.json()["alert"]
     except Exception as e:
-        st.error(f"Error fetching branch alert: {str(e)}")
-        return "Unable to fetch branch alert at this time."
+        logger.warning(f"Error fetching branch alert from API: {str(e)}")
+        try:
+            # Direct fallback using local generator
+            alert_content = generate_alert(
+                query=f"Generate insights for {branch} branch",
+                branch=branch,
+                timeframe="recent"
+            )
+            if isinstance(alert_content, dict):
+                return alert_content.get('description', f"Unable to generate insights for {branch}.")
+            return alert_content
+        except Exception as inner_e:
+            logger.error(f"Error in fallback for branch alert: {str(inner_e)}")
+            return f"Unable to fetch branch alert for {branch} at this time."
 
 def get_fraud_alert():
+    """Get fraud detection alerts with fallback mechanism"""
     try:
-        response = requests.get(f"{API_URL}/alerts/fraud")
+        response = requests.get(f"{API_URL}/alerts/fraud", timeout=5)
         return response.json()["alert"]
     except Exception as e:
-        st.error(f"Error fetching fraud alert: {str(e)}")
-        return "Unable to fetch fraud alert at this time."
+        logger.warning(f"Error fetching fraud alert from API: {str(e)}")
+        try:
+            # Direct fallback using local generator
+            alert_content = generate_alert(
+                query="Detect potential fraud patterns in recent transactions",
+                timeframe="recent"
+            )
+            if isinstance(alert_content, dict):
+                return alert_content.get('description', "Unable to generate fraud insights.")
+            return alert_content
+        except Exception as inner_e:
+            logger.error(f"Error in fallback for fraud alert: {str(inner_e)}")
+            return "Unable to fetch fraud alert at this time."
 
 def get_comparison_alert(branch1, branch2):
     try:
@@ -86,7 +152,7 @@ def generate_custom_alert(query, alert_type, branch=None, compare_with=None, tim
 # UI Components
 def display_sidebar():
     st.sidebar.title("Navigation")
-    pages = ["Dashboard", "Branch Analysis", "Fraud Detection", "Comparative Analysis", "Trend Analysis", "Custom Alert"]
+    pages = ["Dashboard", "Alerts", "Data Management", "Custom Analysis"]
     selected_page = st.sidebar.radio("Go to", pages)
     
     st.sidebar.markdown("---")
@@ -107,15 +173,41 @@ def dashboard_page():
     
     with col1:
         st.info("General Banking Insights")
-        with st.spinner("Generating general insights..."):
-            alert = get_general_alert()
-            st.write(alert)
+        try:
+            with st.spinner("Generating general insights..."):
+                alert = get_general_alert()
+                st.write(alert)
+        except Exception as e:
+            # Fallback to local alerts when API is unavailable
+            alerts = load_latest_alerts()
+            if alerts:
+                # Find a general alert
+                general_alerts = [a for a in alerts if a.get('type') not in ['fraud_flags', 'high_login_attempts']]
+                if general_alerts:
+                    st.write(general_alerts[0].get('description', 'No insights available'))
+                else:
+                    st.write("Local general insights unavailable. Please check API connection.")
+            else:
+                st.write("No insights available. Please generate alerts or check API connection.")
     
     with col2:
         st.info("Fraud Detection Summary")
-        with st.spinner("Analyzing fraud patterns..."):
-            alert = get_fraud_alert()
-            st.write(alert)
+        try:
+            with st.spinner("Analyzing fraud patterns..."):
+                alert = get_fraud_alert()
+                st.write(alert)
+        except Exception as e:
+            # Fallback to local alerts when API is unavailable
+            alerts = load_latest_alerts()
+            if alerts:
+                # Find a fraud alert
+                fraud_alerts = [a for a in alerts if a.get('type') in ['fraud_flags', 'high_login_attempts']]
+                if fraud_alerts:
+                    st.write(fraud_alerts[0].get('description', 'No fraud insights available'))
+                else:
+                    st.write("Local fraud insights unavailable. Please check API connection.")
+            else:
+                st.write("No fraud insights available. Please generate alerts or check API connection.")
     
     st.markdown("---")
     
@@ -123,10 +215,27 @@ def dashboard_page():
     selected_branch = st.selectbox("Select Branch", BRANCH_LIST)
     
     if st.button("Generate Branch Overview"):
-        with st.spinner(f"Generating insights for {selected_branch}..."):
-            alert = get_branch_alert(selected_branch)
-            st.info(f"Branch Analysis: {selected_branch}")
-            st.write(alert)
+        try:
+            with st.spinner(f"Generating insights for {selected_branch}..."):
+                alert = get_branch_alert(selected_branch)
+                st.info(f"Branch Analysis: {selected_branch}")
+                st.write(alert)
+        except Exception as e:
+            # Use direct generator instead of API
+            st.info(f"Branch Analysis: {selected_branch} (Generated locally)")
+            with st.spinner(f"Generating local insights for {selected_branch}..."):
+                try:
+                    alert_content = generate_alert(
+                        query=f"Generate insights for {selected_branch} branch",
+                        branch=selected_branch,
+                        timeframe="recent"
+                    )
+                    if isinstance(alert_content, dict):
+                        st.write(alert_content.get('description', f"No insights available for {selected_branch}"))
+                    else:
+                        st.write(alert_content)
+                except Exception as e2:
+                    st.error(f"Could not generate insights: {str(e2)}")
 
 def branch_analysis_page():
     st.title("Branch Analysis")
@@ -293,10 +402,133 @@ def custom_alert_page():
     
     if st.button("Generate Alert"):
         with st.spinner("Generating custom alert..."):
-            alert = generate_custom_alert(query, alert_type, branch, compare_with, timeframe)
+            try:
+                # Use generate_alert() function directly instead of API
+                alert_content = generate_alert(query=query)
+                
+                # Create alert object
+                custom_alert = {
+                    'id': f"custom_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
+                    'title': alert_content.get('title', 'Custom Alert'),
+                    'description': alert_content.get('description', 'No description available'),
+                    'recommended_actions': alert_content.get('recommended_actions', []),
+                    'severity': 'medium',
+                    'type': 'custom_query',
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
+                
+                # Display the generated alert
+                st.subheader("Generated Alert")
+                render_alert_card(custom_alert)
+            except Exception as e:
+                st.error(f"Error generating custom alert: {str(e)}")
+
+def load_latest_alerts() -> List[Dict[str, Any]]:
+    """
+    Load the latest generated alerts.
+    
+    Returns:
+        List of alerts
+    """
+    alert_generator = AutomaticAlertGenerator()
+    return alert_generator.load_latest_alerts()
+
+def generate_new_alerts() -> List[Dict[str, Any]]:
+    """
+    Generate new alerts based on the latest data.
+    
+    Returns:
+        List of generated alerts
+    """
+    with st.spinner("Generating alerts from the latest data..."):
+        alert_generator = AutomaticAlertGenerator()
+        alerts = alert_generator.run()
+        return alerts
+
+def render_alert_card(alert: Dict[str, Any]):
+    """
+    Render a single alert card.
+    
+    Args:
+        alert: Alert details
+    """
+    severity = alert.get('severity', 'low')
+    alert_class = f"{severity}-alert"
+    
+    html = f"""
+    <div class="alert-card {alert_class}">
+        <div class="alert-title">{alert.get('title', 'Alert')}</div>
+        <div class="alert-body">{alert.get('description', 'No description available')}</div>
+    """
+    
+    # Render recommended actions if available
+    if 'recommended_actions' in alert and alert['recommended_actions']:
+        html += "<div><b>Recommended Actions:</b></div>"
+        for action in alert['recommended_actions']:
+            html += f"<div class='action-item'>• {action}</div>"
+    
+    # Render alert details
+    alert_time = datetime.datetime.fromisoformat(alert.get('timestamp', datetime.datetime.now().isoformat()))
+    formatted_time = alert_time.strftime("%Y-%m-%d %H:%M:%S")
+    html += f"<div class='alert-footer'>Alert ID: {alert.get('id', 'Unknown')} | Generated: {formatted_time} | Type: {alert.get('type', 'Unknown')}</div>"
+    html += "</div>"
+    
+    st.markdown(html, unsafe_allow_html=True)
+
+def render_data_summary():
+    """
+    Render a summary of the current data version.
+    """
+    try:
+        # Get data version info
+        version_manager = DataVersionManager()
+        current_version = version_manager.get_current_version()
+        version_info = version_manager.get_version_info()
+        
+        # Display version information
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Data Version Information")
+            st.markdown(f"**Current Version:** {current_version}")
+            st.markdown(f"**Last Updated:** {version_info.get('created_at', 'Unknown')}")
+            st.markdown(f"**Notes:** {version_info.get('notes', 'No notes available')}")
+        
+        with col2:
+            # Display available versions
+            all_versions = version_manager.list_versions()
+            st.subheader("Available Versions")
             
-            st.subheader("Generated Alert")
-            st.write(alert)
+            if all_versions:
+                selected_version = st.selectbox("Select Version", all_versions, index=all_versions.index(current_version))
+                
+                if selected_version != current_version:
+                    if st.button(f"Rollback to {selected_version}"):
+                        with st.spinner(f"Rolling back to version {selected_version}..."):
+                            success = version_manager.rollback_to_version(selected_version)
+                            if success:
+                                st.success(f"Successfully rolled back to version {selected_version}")
+                                st.rerun()
+                            else:
+                                st.error(f"Failed to roll back to version {selected_version}")
+            else:
+                st.markdown("No versions available")
+        
+        # Display processing info if available
+        processing_info = version_info.get('processing_info', {})
+        if processing_info:
+            st.subheader("Processing Information")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown(f"**Records:** {processing_info.get('processed_records', 'Unknown')}")
+            with col2:
+                st.markdown(f"**Files:** {len(processing_info.get('processed_files', []))}")
+            with col3:
+                st.markdown(f"**Merged Data:** {'Yes' if processing_info.get('merge_with_existing', False) else 'No'}")
+    
+    except Exception as e:
+        st.error(f"Error loading data version information: {str(e)}")
 
 # Main app
 def main():
@@ -305,7 +537,44 @@ def main():
         <style>
         .main-header {
             font-size: 2.5rem;
-            color: #1E88E5;
+            color: #1E3A8A;
+        }
+        .alert-card {
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .high-alert {
+            background-color: rgba(239, 68, 68, 0.1);
+            border-left: 4px solid #EF4444;
+        }
+        .medium-alert {
+            background-color: rgba(249, 115, 22, 0.1);
+            border-left: 4px solid #F97316;
+        }
+        .low-alert {
+            background-color: rgba(59, 130, 246, 0.1);
+            border-left: 4px solid #3B82F6;
+        }
+        .alert-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        .alert-body {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+        .alert-footer {
+            font-size: 0.8rem;
+            color: #6B7280;
+        }
+        .action-item {
+            font-size: 0.9rem;
+            padding: 0.5rem;
+            background-color: rgba(209, 213, 219, 0.2);
+            border-radius: 0.25rem;
+            margin-bottom: 0.25rem;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -319,16 +588,159 @@ def main():
     # Display the selected page
     if selected_page == "Dashboard":
         dashboard_page()
-    elif selected_page == "Branch Analysis":
-        branch_analysis_page()
-    elif selected_page == "Fraud Detection":
-        fraud_detection_page()
-    elif selected_page == "Comparative Analysis":
-        comparative_analysis_page()
-    elif selected_page == "Trend Analysis":
-        trend_analysis_page()
-    elif selected_page == "Custom Alert":
-        custom_alert_page()
+    elif selected_page == "Alerts":
+        st.header("Alert Management")
+        
+        # Alert actions
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            # Alert filtering
+            severity_filter = st.multiselect("Filter by Severity", ["high", "medium", "low"], default=["high", "medium", "low"])
+            
+        with col2:
+            # Generate new alerts button
+            if st.button("Generate New Alerts"):
+                new_alerts = generate_new_alerts()
+                st.success(f"Generated {len(new_alerts)} new alerts")
+                st.rerun()
+        
+        # Load alerts
+        alerts = load_latest_alerts()
+        
+        # Apply filters
+        filtered_alerts = [a for a in alerts if a.get('severity') in severity_filter]
+        
+        # Sort by severity first, then by timestamp
+        severity_order = {"high": 0, "medium": 1, "low": 2}
+        sorted_alerts = sorted(
+            filtered_alerts, 
+            key=lambda x: (
+                severity_order.get(x.get('severity', 'low'), 99),
+                datetime.datetime.fromisoformat(x.get('timestamp', '2000-01-01'))
+            )
+        )
+        
+        # Display alerts
+        st.subheader(f"Alerts ({len(sorted_alerts)})")
+        
+        if sorted_alerts:
+            for alert in sorted_alerts:
+                render_alert_card(alert)
+        else:
+            st.info("No alerts match the current filters.")
+    elif selected_page == "Data Management":
+        st.header("Data Management")
+        
+        # Data version management
+        st.subheader("Data Version Control")
+        render_data_summary()
+        
+        # Upload new data section
+        st.subheader("Add New Data")
+        
+        uploaded_file = st.file_uploader("Upload new transaction data (CSV)", type=["csv"])
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            merge_option = st.checkbox("Merge with existing data", value=True)
+        with col2:
+            generate_alerts_option = st.checkbox("Generate alerts after processing", value=True)
+        
+        if uploaded_file is not None:
+            if st.button("Process New Data"):
+                try:
+                    # Save uploaded file temporarily
+                    temp_file_path = os.path.join("data", "temp_upload.csv")
+                    with open(temp_file_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    
+                    # Process the new data
+                    with st.spinner("Processing new data..."):
+                        version_manager = DataVersionManager(auto_generate_alerts=generate_alerts_option)
+                        new_version = version_manager.process_new_data(temp_file_path, merge_with_existing=merge_option)
+                        
+                    # Clean up temp file
+                    if os.path.exists(temp_file_path):
+                        os.remove(temp_file_path)
+                    
+                    st.success(f"Successfully processed new data. New version: {new_version}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error processing new data: {str(e)}")
+        
+        # Data version comparison
+        st.subheader("Version Comparison")
+        
+        version_manager = DataVersionManager()
+        all_versions = version_manager.list_versions()
+        
+        if len(all_versions) >= 2:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                version_a = st.selectbox("Version A", all_versions, index=min(1, len(all_versions)-1))
+            
+            with col2:
+                version_b = st.selectbox("Version B", all_versions, index=0)
+            
+            if version_a != version_b:
+                if st.button("Compare Versions"):
+                    with st.spinner("Comparing versions..."):
+                        comparison = version_manager.compare_versions(version_a, version_b)
+                        
+                        st.subheader("Comparison Results")
+                        
+                        # Display comparison metrics
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.markdown(f"**{version_a}**")
+                            st.markdown(f"Created: {comparison.get('creation_date_a', 'Unknown')}")
+                            st.markdown(f"Notes: {comparison.get('notes_a', 'None')}")
+                        
+                        with col2:
+                            st.markdown(f"**{version_b}**")
+                            st.markdown(f"Created: {comparison.get('creation_date_b', 'Unknown')}")
+                            st.markdown(f"Notes: {comparison.get('notes_b', 'None')}")
+                        
+                        # Display differences
+                        st.markdown("### Differences")
+                        st.markdown(f"- Time between versions: {comparison.get('time_difference_days', 'Unknown')} days")
+                        st.markdown(f"- Transaction count difference: {comparison.get('transaction_count_difference', 'Unknown')}")
+                        st.markdown(f"- New records: {comparison.get('new_records_count', 'Unknown')}")
+                        st.markdown(f"- Lineage relation: {comparison.get('lineage_relation', 'Unknown')}")
+        else:
+            st.info("At least two versions are needed for comparison.")
+    elif selected_page == "Custom Analysis":
+        st.header("Custom Analysis")
+        
+        # Input for custom alert generation
+        st.subheader("Generate Custom Alert")
+        query = st.text_area("Enter your query", "Analyze recent transaction patterns and identify any unusual activity.", height=100)
+        
+        if st.button("Generate Alert"):
+            with st.spinner("Generating custom alert..."):
+                try:
+                    # Use generate_alert() function directly instead of API
+                    alert_content = generate_alert(query=query)
+                    
+                    # Create alert object
+                    custom_alert = {
+                        'id': f"custom_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
+                        'title': alert_content.get('title', 'Custom Alert'),
+                        'description': alert_content.get('description', 'No description available'),
+                        'recommended_actions': alert_content.get('recommended_actions', []),
+                        'severity': 'medium',
+                        'type': 'custom_query',
+                        'timestamp': datetime.datetime.now().isoformat()
+                    }
+                    
+                    # Display the generated alert
+                    st.subheader("Generated Alert")
+                    render_alert_card(custom_alert)
+                except Exception as e:
+                    st.error(f"Error generating custom alert: {str(e)}")
 
 if __name__ == "__main__":
     main() 

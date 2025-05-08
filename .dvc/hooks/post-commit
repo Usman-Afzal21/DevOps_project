@@ -1,1 +1,14 @@
- 
+#!/bin/sh
+# DVC post-commit hook to update vector store after data changes are committed
+
+echo "DVC post-commit hook triggered. Updating vector store and generating alerts..."
+python update_vector_store.py
+exit_code=$?
+
+if [ $exit_code -eq 0 ]; then
+    echo "Vector store updated and alerts generated successfully!"
+else
+    echo "Vector store update failed with exit code: $exit_code"
+fi
+
+exit $exit_code 

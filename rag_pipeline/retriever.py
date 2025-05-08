@@ -9,6 +9,7 @@ import logging
 from typing import List, Dict, Any, Optional
 import sys
 import os
+import traceback
 
 # Add embeddings directory to path to import TransactionVectorStore
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -46,32 +47,128 @@ class TransactionRetriever:
         Returns:
             Formatted context string
         """
-        if not results or 'documents' not in results or not results['documents']:
+        if not results:
             return "No relevant information found."
         
-        documents = results['documents'][0]
-        metadatas = results['metadatas'][0] if 'metadatas' in results else None
-        
-        # Limit the number of items
-        documents = documents[:max_items]
-        if metadatas:
-            metadatas = metadatas[:max_items]
-        
-        # Format the context
-        context = ""
-        for i, document in enumerate(documents):
-            # Add metadata if available
+        try:
+            # Handle potentially missing 'documents' key
+            if 'documents' not in results:
+                return "No document content available in results."
+                
+            documents = results.get('documents', [])
+            # Handle empty results or first element not being a list
+            if not documents or not isinstance(documents[0], list):
+                return "No documents found in results."
+                
+            documents = documents[0]
+                
+            # Get metadata if available
+            metadatas = results.get('metadatas', [])
+            if metadatas and isinstance(metadatas[0], list):
+                metadatas = metadatas[0]
+            else:
+                metadatas = None
+                
+            # Limit the number of items
+            documents = documents[:max_items]
             if metadatas:
-                metadata = metadatas[i]
-                context += f"--- Item {i+1} ---\n"
-                for key, value in metadata.items():
-                    if key != 'id':  # Skip id field
-                        context += f"{key}: {value}\n"
+                metadatas = metadatas[:max_items]
             
-            # Add document text
-            context += f"{document}\n\n"
+            # Format the context
+            context = ""
+            for i, document in enumerate(documents):
+                # Add metadata if available
+                if metadatas and i < len(metadatas):
+                    metadata = metadatas[i]
+                    context += f"--- Item {i+1} ---\n"
+                    for key, value in metadata.items():
+                        if key != 'id':  # Skip id field
+                            context += f"{key}: {value}\n"
+                
+                # Add document text
+                context += f"{document}\n\n"
+                
+            return context
+            
+        except Exception as e:
+            logger.error(f"Error formatting retrieval results: {e}")
+            return f"Error formatting results: {str(e)}"
+    
+    def retrieve(self, query: str, k: int = 5) -> List[str]:
+        """
+        Retrieve relevant documents based on query.
         
-        return context
+        Args:
+            query: Search query
+            k: Number of documents to retrieve
+            
+        Returns:
+            List of document texts
+        """
+        logger.info(f"Retrieving context for query: {query}")
+        
+        try:
+            # Ensure collections are initialized
+            if self.vector_store.transactions_collection is None:
+                self.vector_store.create_transaction_collection()
+            if self.vector_store.summaries_collection is None:
+                self.vector_store.create_summary_collection()
+                
+            # Query transaction collection with proper error handling
+            transaction_results = {}
+            try:
+                transaction_results = self.vector_store.query_transactions(query, n_results=k)
+                logger.info(f"Retrieved {len(transaction_results.get('documents', [[]])[0])} transaction results")
+            except Exception as tx_error:
+                logger.error(f"Error querying transactions: {str(tx_error)}")
+                transaction_results = {"documents": [[]], "metadatas": [[]]}
+            
+            # Query summary collection with proper error handling
+            summary_results = {}
+            try:
+                summary_results = self.vector_store.query_summaries(query, n_results=k)
+                logger.info(f"Retrieved {len(summary_results.get('documents', [[]])[0])} summary results")
+            except Exception as sum_error:
+                logger.error(f"Error querying summaries: {str(sum_error)}")
+                summary_results = {"documents": [[]], "metadatas": [[]]}
+            
+            # Extract documents from both results with careful error handling
+            transaction_docs = []
+            if 'documents' in transaction_results and transaction_results['documents'] and len(transaction_results['documents']) > 0:
+                if isinstance(transaction_results['documents'][0], list):
+                    transaction_docs = transaction_results['documents'][0]
+                else:
+                    transaction_docs = [transaction_results['documents'][0]]
+                
+            summary_docs = []
+            if 'documents' in summary_results and summary_results['documents'] and len(summary_results['documents']) > 0:
+                if isinstance(summary_results['documents'][0], list):
+                    summary_docs = summary_results['documents'][0]
+                else:
+                    summary_docs = [summary_results['documents'][0]]
+                
+            # Combine documents
+            combined_docs = transaction_docs + summary_docs
+            
+            # Filter out empty texts
+            filtered_texts = [text for text in combined_docs if text and isinstance(text, str) and text.strip()]
+            
+            # Limit context length to avoid token issues
+            max_chars_per_doc = 2000
+            truncated_texts = [text[:max_chars_per_doc] for text in filtered_texts]
+            
+            if not truncated_texts:
+                logger.warning("No relevant documents found for query")
+                # Return a placeholder to avoid empty context
+                return ["No specific data found for this query."]
+                
+            return truncated_texts
+            
+        except Exception as e:
+            # Add detailed error info
+            error_trace = traceback.format_exc()
+            logger.error(f"Error retrieving context: {str(e)}\n{error_trace}")
+            return ["Error retrieving context information. Using general knowledge instead."]
     
     def retrieve_for_query(self, query: str, n_results: int = 5) -> str:
         """
@@ -86,22 +183,20 @@ class TransactionRetriever:
         """
         logger.info(f"Retrieving context for query: {query}")
         
-        # Query both collections
-        all_results = self.vector_store.query_all(query, n_results)
-        
-        # Format results
-        transaction_context = self.format_retrieval_results(
-            all_results['transactions'], max_items=n_results
-        )
-        summary_context = self.format_retrieval_results(
-            all_results['summaries'], max_items=n_results
-        )
-        
-        # Combine contexts
-        combined_context = "TRANSACTION DETAILS:\n" + transaction_context + "\n\n"
-        combined_context += "BRANCH SUMMARIES:\n" + summary_context
-        
-        return combined_context
+        try:
+            # Get individual document results
+            context_docs = self.retrieve(query, n_results)
+            
+            # Format results for LLM consumption
+            combined_context = "### RETRIEVED CONTEXT:\n\n"
+            
+            for i, doc in enumerate(context_docs):
+                combined_context += f"Document {i+1}:\n{doc}\n\n"
+            
+            return combined_context
+        except Exception as e:
+            logger.error(f"Error in retrieve_for_query: {str(e)}")
+            return "Error retrieving context. Using general knowledge instead."
     
     def retrieve_for_branch(self, branch: str, n_results: int = 5) -> str:
         """
@@ -199,6 +294,34 @@ class TransactionRetriever:
             'branch_a_context': branch_a_context,
             'branch_b_context': branch_b_context
         }
+
+    def augment_query(self, query: str, additional_context: Optional[str] = None) -> str:
+        """
+        Augment query with retrieved context.
+        
+        Args:
+            query: Original query
+            additional_context: Additional context to include
+            
+        Returns:
+            Augmented query
+        """
+        # Retrieve relevant context
+        context_docs = self.retrieve(query)
+        
+        # Format context
+        formatted_context = "\n\n".join([f"Context {i+1}:\n{doc}" for i, doc in enumerate(context_docs)])
+        
+        # Create augmented query
+        augmented_query = f"Query: {query}\n\n"
+        
+        if context_docs:
+            augmented_query += f"Retrieved Context:\n{formatted_context}\n\n"
+        
+        if additional_context:
+            augmented_query += f"Additional Context:\n{additional_context}\n\n"
+        
+        return augmented_query
 
 if __name__ == "__main__":
     # Example usage

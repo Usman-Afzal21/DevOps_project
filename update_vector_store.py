@@ -30,27 +30,21 @@ def update_vectors_after_data_change():
         
         logger.info("Starting vector store update process")
         
-        # Initialize version manager
-        version_manager = DataVersionManager()
+        # Initialize the data version manager with auto-alert generation
+        version_manager = DataVersionManager(auto_generate_alerts=True)
         
-        # Get latest data version
-        current_version = version_manager.get_current_version()
-        logger.info(f"Current data version: {current_version}")
+        # Update the vector database
+        result = version_manager.update_vector_db()
         
-        # Update vector DB
-        update_info = version_manager.update_vector_db()
-        
-        if update_info["status"] == "success":
-            logger.info(f"Successfully updated vector store with version {current_version}")
-            logger.info(f"Update timestamp: {update_info['timestamp']}")
-            logger.info(f"Update message: {update_info['message']}")
+        if result.get('status') == 'success':
+            logger.info("Vector store update completed successfully")
+            logger.info("Automatic alert generation has been triggered")
         else:
-            logger.error(f"Failed to update vector store: {update_info['message']}")
+            logger.error(f"Vector store update failed: {result.get('message')}")
             
-        return update_info["status"] == "success"
-        
+        return result.get('status') == 'success'
     except Exception as e:
-        logger.error(f"Error updating vector store: {str(e)}")
+        logger.error(f"Error updating vector store: {e}")
         return False
 
 if __name__ == "__main__":

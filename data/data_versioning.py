@@ -6,6 +6,7 @@ This module handles:
 - Dataset updating with new data
 - Tracking data lineage
 - Integration with the RAG pipeline
+- Automatic alert generation
 """
 
 import os
@@ -39,7 +40,8 @@ class DataVersionManager:
         self, 
         base_dir: str = os.path.join(os.path.dirname(__file__), '..'),
         version_dir: str = "data/versions",
-        metadata_file: str = "data/version_metadata.json"
+        metadata_file: str = "data/version_metadata.json",
+        auto_generate_alerts: bool = True
     ):
         """
         Initialize the data version manager.
@@ -48,6 +50,7 @@ class DataVersionManager:
             base_dir: Base directory of the project
             version_dir: Directory to store versioned data
             metadata_file: File to store version metadata
+            auto_generate_alerts: Whether to auto-generate alerts on data update
         """
         self.base_dir = base_dir
         self.version_dir = os.path.join(base_dir, version_dir)
@@ -56,6 +59,7 @@ class DataVersionManager:
         self.processed_data_dir = os.path.join(base_dir, "data/processed")
         self.embeddings_dir = os.path.join(base_dir, "embeddings")
         self.vector_db_dir = os.path.join(base_dir, "data/vector_db")
+        self.auto_generate_alerts = auto_generate_alerts
         
         # Create necessary directories
         os.makedirs(self.version_dir, exist_ok=True)
@@ -272,12 +276,13 @@ class DataVersionManager:
             # Generate branch summaries and save all processed data
             output_files = processor.save_processed_data()
         else:
-            # If not merging, just process the new file
+            # If not merging, process all raw files
             processor = TransactionDataProcessor(
                 raw_data_path=self.raw_data_dir,
                 processed_data_path=self.processed_data_dir
             )
-            output_files = processor.process_pipeline(os.path.basename(raw_data_file))
+            # Use the new process_all_data_pipeline method to process all files
+            output_files = processor.process_all_data_pipeline()
         
         # Copy processed files to version directory
         for output_type, output_path in output_files.items():
@@ -331,6 +336,10 @@ class DataVersionManager:
         self.metadata["last_updated"] = datetime.datetime.now().isoformat()
         self._save_metadata(self.metadata)
         
+        # Automatically generate alerts if enabled
+        if self.auto_generate_alerts:
+            self.generate_alerts()
+        
         logger.info(f"Completed processing new data. New version: {new_version}")
         return new_version
     
@@ -380,6 +389,10 @@ class DataVersionManager:
             
             logger.info("Vector database updated successfully")
             
+            # Automatically generate alerts after vector DB update if enabled
+            if self.auto_generate_alerts:
+                self.generate_alerts()
+            
         except Exception as e:
             logger.error(f"Error updating vector database: {e}")
             update_info = {
@@ -410,6 +423,35 @@ class DataVersionManager:
                     shutil.copy2(s, d)
                 elif os.path.isdir(s):
                     self._backup_directory(s, d)
+    
+    def generate_alerts(self) -> List[Dict[str, Any]]:
+        """
+        Generate alerts based on the latest data.
+        
+        Returns:
+            List of generated alerts
+        """
+        logger.info("Generating automatic alerts based on latest data")
+        
+        try:
+            # Import the AutomaticAlertGenerator
+            from rag_pipeline.alert_generator import AutomaticAlertGenerator
+            
+            # Initialize alert generator
+            alert_generator = AutomaticAlertGenerator(
+                processed_data_dir=self.processed_data_dir,
+                vector_db_dir=self.vector_db_dir
+            )
+            
+            # Run alert generation process
+            alerts = alert_generator.run()
+            
+            logger.info(f"Generated {len(alerts)} alerts automatically")
+            return alerts
+            
+        except Exception as e:
+            logger.error(f"Error generating automatic alerts: {e}")
+            return []
     
     def rollback_to_version(self, version: str) -> bool:
         """
@@ -477,6 +519,10 @@ class DataVersionManager:
             
             self._save_metadata(self.metadata)
             logger.info(f"Successfully rolled back to version {version}")
+            
+            # Generate alerts after rollback if enabled
+            if self.auto_generate_alerts:
+                self.generate_alerts()
             
             return True
             
