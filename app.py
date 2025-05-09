@@ -12,13 +12,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Workaround for torch classes runtime error in streamlit
+# Set environment variable to disable torch classes before importing torch
+os.environ["ENABLE_TORCH_MODULE_CLASSES"] = "0"
 try:
     import torch
-    # Avoid referencing torch.classes directly which causes errors
-    torch._C._DisableTorchScriptMethod = torch._C._DisableTorchScriptMethod
+    # Avoid referencing torch.classes directly
+    torch.classes = None
 except ImportError:
     pass
-except AttributeError:
+except Exception as e:
+    print(f"Warning: Could not apply torch workaround: {str(e)}")
     pass
 
 # Add project directories to path for imports
@@ -657,6 +660,7 @@ def main():
                     
                     # Process the new data
                     with st.spinner("Processing new data..."):
+                        st.info("Using optimized processing: New data will be analyzed directly with RAG without re-vectorizing the entire dataset.")
                         version_manager = DataVersionManager(auto_generate_alerts=generate_alerts_option)
                         new_version = version_manager.process_new_data(temp_file_path, merge_with_existing=merge_option)
                         
@@ -665,6 +669,7 @@ def main():
                         os.remove(temp_file_path)
                     
                     st.success(f"Successfully processed new data. New version: {new_version}")
+                    st.info("Alerts have been generated directly from the new data and can be viewed in the Alerts section.")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error processing new data: {str(e)}")

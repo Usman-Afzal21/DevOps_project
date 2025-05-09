@@ -108,3 +108,73 @@ DVC hooks automatically:
 - `app.py`: Streamlit UI
 - `add_new_data.py`: Script for adding new data
 - `update_vector_store.py`: Script for updating the vector store
+
+# Banking RAG System: Optimized Data Processing
+
+## About this Project
+This project implements a Retrieval-Augmented Generation (RAG) system for a banking application.
+It uses LLama 3 via Groq API to analyze banking transaction data, detect anomalies, and generate intelligent alerts.
+
+## Optimized RAG Approach
+The system uses an optimized approach for handling data:
+
+1. **One-time Vector Store Initialization:** 
+   - The base data in `data/processed` is vectorized only once during setup
+   - This provides the foundation for RAG functionality without repeated processing
+   
+2. **Direct Analysis of New Data:**
+   - New data uploaded through the UI is analyzed directly without re-vectorizing
+   - The system uses the existing vector store for context through RAG
+   - This is significantly more computationally efficient for large datasets
+
+3. **Versioning Only New Data:**
+   - Only the new data is versioned with DVC, not the vector store
+   - This reduces storage requirements and improves performance
+
+## System Setup
+
+### First-time Setup
+Run the setup script to initialize the system with base data:
+```
+python setup_rag_system.py
+```
+
+This will:
+1. Process the base data in `data/raw`
+2. Initialize the vector store once with the base data
+3. Set up the system for direct data analysis
+
+### Running the System
+Start the system with:
+```
+update_vector_store.bat
+```
+
+Or manually start each component:
+1. Start the API server: `python api/main.py`
+2. Start the UI: `streamlit run app.py`
+
+### Processing New Data
+Upload new data through the UI:
+1. Go to "Data Management" tab
+2. Upload a CSV file
+3. Click "Process New Data"
+
+The system will:
+- Analyze the new data directly without re-vectorizing
+- Generate alerts based on detected anomalies
+- Display insights using the RAG approach
+
+## Project Structure
+- `app.py`: Streamlit UI for the banking dashboard
+- `api/`: API server code
+- `data/`: Transaction data (raw and processed)
+- `embeddings/`: Embedding generation code
+- `rag_pipeline/`: RAG implementation
+- `initialize_vector_store.py`: Script to initialize the vector store once
+- `rag_pipeline/direct_data_analyzer.py`: Efficient direct data analysis
+
+## Technical Details
+- The system uses a custom embedding function to avoid ONNX dependencies
+- Alerts are generated using RAG with LLama 3 via Groq API
+- DVC is used for versioning input data only, not for the vector store

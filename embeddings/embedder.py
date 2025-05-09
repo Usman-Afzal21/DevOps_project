@@ -70,15 +70,27 @@ class TransactionEmbedder:
         """
         # Format the branch summary as a descriptive text
         text = (
-            f"Daily summary for {summary['Location_']} on {summary['Date_']}: "
-            f"Processed {summary['TransactionCount']} transactions totaling {summary['TotalAmount']:.2f}. "
-            f"Average transaction amount was {summary['AverageAmount']:.2f} with standard deviation of {summary['AmountStdDev']:.2f}. "
-            f"The branch had {summary['CreditTransactionCount']} credit transactions and {summary['LargeTransactionCount']} large transactions. "
-            f"Average login attempts were {summary['AverageLoginAttempts']:.2f} with maximum of {summary['MaxLoginAttempts']}. "
-            f"Average customer age was {summary['AverageCustomerAge']:.2f} years. "
-            f"Average transaction duration was {summary['AverageTransactionDuration']:.2f} seconds. "
-            f"Fraud risk score: {summary['FraudRiskScore']:.4f}."
+            f"Daily summary for {summary.get('Location_', 'Unknown')} on {summary.get('Date_', 'Unknown')}: "
+            f"Processed {summary.get('TransactionCount', 0)} transactions totaling {summary.get('TotalAmount', 0):.2f}. "
+            f"Average transaction amount was {summary.get('AverageAmount', 0):.2f} with standard deviation of {summary.get('AmountStdDev', 0):.2f}. "
+            f"The branch had {summary.get('CreditTransactionCount', 0)} credit transactions and {summary.get('LargeTransactionCount', 0)} large transactions. "
+            f"Average login attempts were {summary.get('AverageLoginAttempts', 0):.2f} with maximum of {summary.get('MaxLoginAttempts', 0)}. "
         )
+        
+        # Conditionally add customer age information if available
+        if 'AverageCustomerAge' in summary:
+            text += f"Average customer age was {summary.get('AverageCustomerAge', 0):.2f} years. "
+        
+        # Conditionally add transaction duration if available
+        if 'AverageTransactionDuration' in summary:
+            text += f"Average transaction duration was {summary.get('AverageTransactionDuration', 0):.2f} seconds. "
+        
+        # Conditionally add fraud risk score if available
+        if 'FraudRiskScore' in summary:
+            text += f"Fraud risk score: {summary.get('FraudRiskScore', 0):.4f}."
+        else:
+            text += f"Fraud risk score: {0.01:.4f}."
+        
         return text
     
     def generate_transaction_embeddings(self, transactions_df: pd.DataFrame) -> Dict[str, Any]:
@@ -146,13 +158,22 @@ class TransactionEmbedder:
             text = self.branch_summary_to_text(summary_dict)
             texts.append(text)
             ids.append(f"summary_{idx}")
-            metadata.append({
+            
+            # Create metadata with safe access to values
+            meta_entry = {
                 'id': f"summary_{idx}",
-                'date': str(summary_dict['Date_']),
-                'location': summary_dict['Location_'],
-                'transaction_count': int(summary_dict['TransactionCount']),
-                'fraud_risk_score': float(summary_dict['FraudRiskScore'])
-            })
+                'date': str(summary_dict.get('Date_', '')),
+                'location': summary_dict.get('Location_', 'Unknown'),
+                'transaction_count': int(summary_dict.get('TransactionCount', 0))
+            }
+            
+            # Only add fraud_risk_score if it exists
+            if 'FraudRiskScore' in summary_dict:
+                meta_entry['fraud_risk_score'] = float(summary_dict.get('FraudRiskScore', 0.01))
+            else:
+                meta_entry['fraud_risk_score'] = 0.01
+            
+            metadata.append(meta_entry)
         
         # Generate embeddings
         embeddings = self.model.encode(texts)

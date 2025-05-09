@@ -218,6 +218,7 @@ class DataVersionManager:
     def process_new_data(self, raw_data_file: str, merge_with_existing: bool = True) -> str:
         """
         Process new data file and create a new version.
+        UPDATED: No longer re-vectorizes all data, only versions the new data.
         
         Args:
             raw_data_file: Path to new raw data file
@@ -249,99 +250,136 @@ class DataVersionManager:
                 current_processed_path = os.path.join(self.processed_data_dir, "processed_transactions.csv")
                 if os.path.exists(current_processed_path):
                     current_data = pd.read_csv(current_processed_path)
-                    logger.info(f"Loaded existing processed data: {len(current_data)} records")
+                    logger.info(f"Loaded existing data with {len(current_data)} records")
             except Exception as e:
-                logger.error(f"Error loading existing data: {e}")
-                current_data = None
+                logger.warning(f"Error loading existing data: {e}. Will process new data only.")
             
-            # Initialize processor for new data
-            processor = TransactionDataProcessor(
-                raw_data_path=self.raw_data_dir,
-                processed_data_path=self.processed_data_dir
-            )
-            
-            # Process new data
-            processor.load_data(os.path.basename(raw_data_file))
-            processor.clean_data()
-            processor.create_features()
-            processor.normalize_features()
-            
-            # Merge with existing data if available
-            if current_data is not None:
-                # Ensure we don't have duplicate transaction IDs
-                combined_data = pd.concat([current_data, processor.data]).drop_duplicates(subset=['TransactionID'])
-                processor.data = combined_data
-                logger.info(f"Merged data: {len(combined_data)} total records")
-            
-            # Generate branch summaries and save all processed data
-            output_files = processor.save_processed_data()
+            # Load new data
+            try:
+                new_data = pd.read_csv(raw_data_file)
+                logger.info(f"Loaded new data with {len(new_data)} records")
+                
+                # Merge datasets if current data exists
+                if current_data is not None:
+                    merged_data = pd.concat([current_data, new_data], ignore_index=True)
+                    logger.info(f"Merged data has {len(merged_data)} records")
+                else:
+                    merged_data = new_data
+                    logger.info(f"No existing data found. Using only new data ({len(merged_data)} records)")
+                
+                # Initialize data processor
+                processor = TransactionDataProcessor(
+                    raw_data_path=self.raw_data_dir,
+                    processed_data_path=self.processed_data_dir
+                )
+                
+                # Process the merged data
+                processor.data = merged_data
+                processor.clean_data()
+                processor.create_features()
+                
+                # Save processed data
+                saved_files = processor.save_processed_data()
+                
+                # Copy processed files to version directory
+                for file_type, file_path in saved_files.items():
+                    filename = os.path.basename(file_path)
+                    version_processed_path = os.path.join(version_dir, "processed", filename)
+                    shutil.copy2(file_path, version_processed_path)
+                    self.metadata["versions"][new_version]["files"]["processed"].append(filename)
+                
+                # Update processing info
+                self.metadata["versions"][new_version]["processing_info"] = {
+                    "processed_records": len(merged_data),
+                    "processed_files": list(saved_files.values()),
+                    "merge_with_existing": merge_with_existing
+                }
+                
+                # Save the metadata
+                self._save_metadata(self.metadata)
+                
+                # Directly analyze the new data without updating vectors
+                self._analyze_new_data(new_data)
+                
+                return new_version
+                
+            except Exception as e:
+                logger.error(f"Error processing new data: {e}")
+                raise
         else:
-            # If not merging, process all raw files
-            processor = TransactionDataProcessor(
-                raw_data_path=self.raw_data_dir,
-                processed_data_path=self.processed_data_dir
-            )
-            # Use the new process_all_data_pipeline method to process all files
-            output_files = processor.process_all_data_pipeline()
+            # Process new data only
+            try:
+                new_data = pd.read_csv(raw_data_file)
+                logger.info(f"Loaded new data with {len(new_data)} records")
+                
+                # Initialize data processor
+                processor = TransactionDataProcessor(
+                    raw_data_path=self.raw_data_dir,
+                    processed_data_path=self.processed_data_dir
+                )
+                
+                # Process the new data
+                processor.data = new_data
+                processor.clean_data()
+                processor.create_features()
+                
+                # Save processed data
+                saved_files = processor.save_processed_data()
+                
+                # Copy processed files to version directory
+                for file_type, file_path in saved_files.items():
+                    filename = os.path.basename(file_path)
+                    version_processed_path = os.path.join(version_dir, "processed", filename)
+                    shutil.copy2(file_path, version_processed_path)
+                    self.metadata["versions"][new_version]["files"]["processed"].append(filename)
+                
+                # Update processing info
+                self.metadata["versions"][new_version]["processing_info"] = {
+                    "processed_records": len(new_data),
+                    "processed_files": list(saved_files.values()),
+                    "merge_with_existing": merge_with_existing
+                }
+                
+                # Save the metadata
+                self._save_metadata(self.metadata)
+                
+                # Directly analyze the new data without updating vectors
+                self._analyze_new_data(new_data)
+                
+                return new_version
+                
+            except Exception as e:
+                logger.error(f"Error processing new data: {e}")
+                raise
+    
+    def _analyze_new_data(self, new_data: pd.DataFrame) -> List[Dict[str, Any]]:
+        """
+        Analyze new data directly using the RAG pipeline without re-vectorizing.
         
-        # Copy processed files to version directory
-        for output_type, output_path in output_files.items():
-            version_processed_path = os.path.join(version_dir, "processed", os.path.basename(output_path))
-            shutil.copy2(output_path, version_processed_path)
+        Args:
+            new_data: DataFrame with new transaction data
             
-            # Update metadata for processed files
-            self.metadata["versions"][new_version]["files"]["processed"].append(os.path.basename(output_path))
-        
-        # Generate embeddings
-        embedder = TransactionEmbedder()
-        embedding_outputs = embedder.process_and_embed(
-            transactions_path=os.path.join(self.processed_data_dir, "processed_transactions.csv"),
-            summaries_path=os.path.join(self.processed_data_dir, "branch_summaries.csv"),
-            output_dir=self.embeddings_dir
-        )
-        
-        # Copy embedding files to version directory
-        for output_type, output_path in embedding_outputs.items():
-            version_embedding_path = os.path.join(version_dir, "embeddings", os.path.basename(output_path))
-            shutil.copy2(output_path, version_embedding_path)
+        Returns:
+            List of generated alerts
+        """
+        try:
+            # Import analyzer here to avoid circular imports
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from rag_pipeline.direct_data_analyzer import DirectDataAnalyzer
             
-            # Get related files (texts, metadata)
-            embedding_dir = os.path.dirname(output_path)
-            prefix = os.path.basename(output_path).split('_')[0]
-            for suffix in ['texts.txt', 'metadata.csv']:
-                related_file = os.path.join(embedding_dir, f"{prefix}_{suffix}")
-                if os.path.exists(related_file):
-                    version_related_path = os.path.join(version_dir, "embeddings", os.path.basename(related_file))
-                    shutil.copy2(related_file, version_related_path)
-                    
-                    # Update metadata for embedding files
-                    self.metadata["versions"][new_version]["files"]["embeddings"].append(os.path.basename(related_file))
+            logger.info("Analyzing new data directly with RAG")
             
-            # Update metadata for embedding files
-            self.metadata["versions"][new_version]["files"]["embeddings"].append(os.path.basename(output_path))
-        
-        # Update vector database
-        self.update_vector_db()
-        
-        # Save processing metrics
-        self.metadata["versions"][new_version]["processing_info"] = {
-            "merge_with_existing": merge_with_existing,
-            "processed_records": len(processor.data),
-            "processed_files": list(output_files.keys()),
-            "embedding_files": list(embedding_outputs.keys()),
-            "completion_time": datetime.datetime.now().isoformat()
-        }
-        
-        # Save updated metadata
-        self.metadata["last_updated"] = datetime.datetime.now().isoformat()
-        self._save_metadata(self.metadata)
-        
-        # Automatically generate alerts if enabled
-        if self.auto_generate_alerts:
-            self.generate_alerts()
-        
-        logger.info(f"Completed processing new data. New version: {new_version}")
-        return new_version
+            # Initialize analyzer
+            analyzer = DirectDataAnalyzer()
+            
+            # Analyze the data and generate alerts
+            alerts = analyzer.analyze_new_data(new_data)
+            
+            logger.info(f"Generated {len(alerts)} alerts from new data")
+            return alerts
+        except Exception as e:
+            logger.error(f"Error analyzing new data: {e}")
+            return []
     
     def update_vector_db(self) -> Dict[str, Any]:
         """
