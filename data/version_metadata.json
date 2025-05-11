@@ -1,5 +1,5 @@
 {
-  "current_version": "v18.0.0",
+  "current_version": "v23.0.0",
   "versions": {
     "v1.0.0": {
       "created_at": "2025-05-08T18:43:59.136870",
@@ -502,6 +502,131 @@
         ],
         "merge_with_existing": true
       }
+    },
+    "v19.0.0": {
+      "created_at": "2025-05-09T15:32:03.356800",
+      "notes": "Added new data from temp_upload.csv",
+      "parent_version": "v18.0.0",
+      "files": {
+        "raw": [
+          "temp_upload.csv"
+        ],
+        "processed": [
+          "processed_transactions.csv",
+          "branch_summaries.csv"
+        ],
+        "embeddings": [],
+        "vector_db": []
+      },
+      "metrics": {},
+      "processing_info": {
+        "processed_records": 2572,
+        "processed_files": [
+          "C:\\Users\\Lenovo\\Desktop\\DevOps_project\\data\\..\\data/processed\\processed_transactions.csv",
+          "C:\\Users\\Lenovo\\Desktop\\DevOps_project\\data\\..\\data/processed\\branch_summaries.csv"
+        ],
+        "merge_with_existing": true
+      }
+    },
+    "v20.0.0": {
+      "created_at": "2025-05-09T16:17:58.013289",
+      "notes": "Added new data from temp_upload.csv",
+      "parent_version": "v19.0.0",
+      "files": {
+        "raw": [
+          "temp_upload.csv"
+        ],
+        "processed": [
+          "processed_transactions.csv",
+          "branch_summaries.csv"
+        ],
+        "embeddings": [],
+        "vector_db": []
+      },
+      "metrics": {},
+      "processing_info": {
+        "processed_records": 2602,
+        "processed_files": [
+          "C:\\Users\\Lenovo\\Desktop\\DevOps_project\\data\\..\\data/processed\\processed_transactions.csv",
+          "C:\\Users\\Lenovo\\Desktop\\DevOps_project\\data\\..\\data/processed\\branch_summaries.csv"
+        ],
+        "merge_with_existing": true
+      }
+    },
+    "v21.0.0": {
+      "created_at": "2025-05-09T16:18:52.505548",
+      "notes": "Added new data from temp_upload.csv",
+      "parent_version": "v20.0.0",
+      "files": {
+        "raw": [
+          "temp_upload.csv"
+        ],
+        "processed": [
+          "processed_transactions.csv",
+          "branch_summaries.csv"
+        ],
+        "embeddings": [],
+        "vector_db": []
+      },
+      "metrics": {},
+      "processing_info": {
+        "processed_records": 2602,
+        "processed_files": [
+          "C:\\Users\\Lenovo\\Desktop\\DevOps_project\\data\\..\\data/processed\\processed_transactions.csv",
+          "C:\\Users\\Lenovo\\Desktop\\DevOps_project\\data\\..\\data/processed\\branch_summaries.csv"
+        ],
+        "merge_with_existing": true
+      }
+    },
+    "v22.0.0": {
+      "created_at": "2025-05-09T16:21:11.085121",
+      "notes": "Added new data from temp_upload.csv",
+      "parent_version": "v21.0.0",
+      "files": {
+        "raw": [
+          "temp_upload.csv"
+        ],
+        "processed": [
+          "processed_transactions.csv",
+          "branch_summaries.csv"
+        ],
+        "embeddings": [],
+        "vector_db": []
+      },
+      "metrics": {},
+      "processing_info": {
+        "processed_records": 2662,
+        "processed_files": [
+          "C:\\Users\\Lenovo\\Desktop\\DevOps_project\\data\\..\\data/processed\\processed_transactions.csv",
+          "C:\\Users\\Lenovo\\Desktop\\DevOps_project\\data\\..\\data/processed\\branch_summaries.csv"
+        ],
+        "merge_with_existing": true
+      }
+    },
+    "v23.0.0": {
+      "created_at": "2025-05-09T17:23:41.994242",
+      "notes": "Added new data from temp_upload.csv",
+      "parent_version": "v22.0.0",
+      "files": {
+        "raw": [
+          "temp_upload.csv"
+        ],
+        "processed": [
+          "processed_transactions.csv",
+          "branch_summaries.csv"
+        ],
+        "embeddings": [],
+        "vector_db": []
+      },
+      "metrics": {},
+      "processing_info": {
+        "processed_records": 2702,
+        "processed_files": [
+          "C:\\Users\\Lenovo\\Desktop\\DevOps_project\\data\\..\\data/processed\\processed_transactions.csv",
+          "C:\\Users\\Lenovo\\Desktop\\DevOps_project\\data\\..\\data/processed\\branch_summaries.csv"
+        ],
+        "merge_with_existing": true
+      }
     }
   },
   "data_lineage": [
@@ -630,7 +755,42 @@
       "timestamp": "2025-05-09T10:22:40.522517",
       "operation": "create_new_version",
       "notes": "Added new data from temp_upload.csv"
+    },
+    {
+      "version": "v19.0.0",
+      "parent": "v18.0.0",
+      "timestamp": "2025-05-09T15:32:03.356800",
+      "operation": "create_new_version",
+      "notes": "Added new data from temp_upload.csv"
+    },
+    {
+      "version": "v20.0.0",
+      "parent": "v19.0.0",
+      "timestamp": "2025-05-09T16:17:58.013289",
+      "operation": "create_new_version",
+      "notes": "Added new data from temp_upload.csv"
+    },
+    {
+      "version": "v21.0.0",
+      "parent": "v20.0.0",
+      "timestamp": "2025-05-09T16:18:52.505548",
+      "operation": "create_new_version",
+      "notes": "Added new data from temp_upload.csv"
+    },
+    {
+      "version": "v22.0.0",
+      "parent": "v21.0.0",
+      "timestamp": "2025-05-09T16:21:11.085121",
+      "operation": "create_new_version",
+      "notes": "Added new data from temp_upload.csv"
+    },
+    {
+      "version": "v23.0.0",
+      "parent": "v22.0.0",
+      "timestamp": "2025-05-09T17:23:41.994242",
+      "operation": "create_new_version",
+      "notes": "Added new data from temp_upload.csv"
     }
   ],
-  "last_updated": "2025-05-09T10:22:40.522517"
+  "last_updated": "2025-05-09T17:23:41.994242"
 }

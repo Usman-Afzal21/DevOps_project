@@ -172,14 +172,41 @@ def dashboard_page():
     st.title("Dashboard: AI-powered Alert Management System")
     st.subheader("Real-time Banking Insights")
     
+    # Load latest alerts to check if there are recent ones from uploaded data
+    all_alerts = load_latest_alerts()
+    
     col1, col2 = st.columns(2)
     
     with col1:
         st.info("General Banking Insights")
         try:
             with st.spinner("Generating general insights..."):
-                alert = get_general_alert()
-                st.write(alert)
+                # First try to directly analyze the most recently uploaded data
+                # Check for recent uploads in data/processed folder
+                try:
+                    # Import the DirectDataAnalyzer to access uploaded data
+                    from rag_pipeline.direct_data_analyzer import DirectDataAnalyzer
+                    
+                    # Find general banking insight type alerts
+                    general_alerts = [a for a in all_alerts if a.get('type') not in ['fraud_flags', 'high_login_attempts']]
+                    
+                    if general_alerts:
+                        # Indicate this is from uploaded data
+                        st.caption("✅ Based on your uploaded data")
+                        # Use the most recent general alert from uploaded data
+                        st.markdown(f"**{general_alerts[0].get('title', 'Recent Insights')}**")
+                        st.write(general_alerts[0].get('description', 'No insights available'))
+                    else:
+                        # If no alerts from uploaded data, fall back to API
+                        st.caption("⚠️ Based on system data (upload your data for personalized insights)")
+                        alert = get_general_alert()
+                        st.write(alert)
+                except Exception as e:
+                    logger.warning(f"Error using uploaded data for insights: {e}")
+                    # Fall back to API
+                    st.caption("⚠️ Based on system data (upload your data for personalized insights)")
+                    alert = get_general_alert()
+                    st.write(alert)
         except Exception as e:
             # Fallback to local alerts when API is unavailable
             alerts = load_latest_alerts()
@@ -187,6 +214,8 @@ def dashboard_page():
                 # Find a general alert
                 general_alerts = [a for a in alerts if a.get('type') not in ['fraud_flags', 'high_login_attempts']]
                 if general_alerts:
+                    st.caption("✅ Based on local data")
+                    st.markdown(f"**{general_alerts[0].get('title', 'Recent Insights')}**")
                     st.write(general_alerts[0].get('description', 'No insights available'))
                 else:
                     st.write("Local general insights unavailable. Please check API connection.")
@@ -197,15 +226,37 @@ def dashboard_page():
         st.info("Fraud Detection Summary")
         try:
             with st.spinner("Analyzing fraud patterns..."):
-                alert = get_fraud_alert()
-                st.write(alert)
+                # First try to use fraud alerts from uploaded data
+                try:
+                    # Check for fraud related alerts
+                    fraud_alerts = [a for a in all_alerts if a.get('type') in ['fraud_flags', 'high_login_attempts', 'velocity_anomaly']]
+                    
+                    if fraud_alerts:
+                        # Indicate this is from uploaded data
+                        st.caption("✅ Based on your uploaded data")
+                        # Use the most recent fraud alert from uploaded data
+                        st.markdown(f"**{fraud_alerts[0].get('title', 'Fraud Detection')}**")
+                        st.write(fraud_alerts[0].get('description', 'No fraud insights available'))
+                    else:
+                        # If no fraud alerts from uploaded data, fall back to API
+                        st.caption("⚠️ Based on system data (upload your data for personalized insights)")
+                        alert = get_fraud_alert()
+                        st.write(alert)
+                except Exception as e:
+                    logger.warning(f"Error using uploaded data for fraud insights: {e}")
+                    # Fall back to API
+                    st.caption("⚠️ Based on system data (upload your data for personalized insights)")
+                    alert = get_fraud_alert()
+                    st.write(alert)
         except Exception as e:
             # Fallback to local alerts when API is unavailable
             alerts = load_latest_alerts()
             if alerts:
                 # Find a fraud alert
-                fraud_alerts = [a for a in alerts if a.get('type') in ['fraud_flags', 'high_login_attempts']]
+                fraud_alerts = [a for a in alerts if a.get('type') in ['fraud_flags', 'high_login_attempts', 'velocity_anomaly']]
                 if fraud_alerts:
+                    st.caption("✅ Based on local data")
+                    st.markdown(f"**{fraud_alerts[0].get('title', 'Fraud Detection')}**")
                     st.write(fraud_alerts[0].get('description', 'No fraud insights available'))
                 else:
                     st.write("Local fraud insights unavailable. Please check API connection.")

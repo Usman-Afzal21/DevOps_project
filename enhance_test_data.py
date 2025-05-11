@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 # Create a dataframe from scratch instead of reading from existing file
 # Define the number of transactions to create
-total_transactions = 30
+total_transactions = 70
 
 # Create empty dataframe with all required columns
 df = pd.DataFrame({

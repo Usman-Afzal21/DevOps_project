@@ -372,6 +372,26 @@ class DataVersionManager:
             # Initialize analyzer
             analyzer = DirectDataAnalyzer()
             
+            # Always analyze the data, even if there are no obvious anomalies
+            logger.info("Forcing analysis of uploaded data for dashboard insights")
+            
+            # Make sure data has required columns for analysis
+            if 'TransactionID' not in new_data.columns:
+                # Add a TransactionID column if it doesn't exist
+                new_data['TransactionID'] = [f"TX{str(i+1000).zfill(6)}" for i in range(len(new_data))]
+                logger.info("Added TransactionID column to data for analysis")
+            
+            # Add FraudFlag column if it doesn't exist (for anomaly detection)
+            if 'FraudFlag' not in new_data.columns:
+                # Check if there's a FraudRiskScore column that could be used
+                if 'FraudRiskScore' in new_data.columns:
+                    # Convert high risk scores to fraud flags
+                    new_data['FraudFlag'] = new_data['FraudRiskScore'] > 0.7
+                else:
+                    # Set default to False
+                    new_data['FraudFlag'] = False
+                logger.info("Added FraudFlag column to data for analysis")
+            
             # Analyze the data and generate alerts
             alerts = analyzer.analyze_new_data(new_data)
             

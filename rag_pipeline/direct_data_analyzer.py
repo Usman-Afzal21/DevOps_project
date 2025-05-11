@@ -207,6 +207,52 @@ class DirectDataAnalyzer:
                         'details': f"Found {len(rapid_txns)} transactions occurring in rapid succession (<5 min apart)"
                     })
         
+        # 6. Location-based analysis (always create this to have location info in dashboard)
+        if 'Location' in df.columns:
+            # Find top locations by transaction volume
+            location_counts = df['Location'].value_counts()
+            top_locations = location_counts.head(3).index.tolist()
+            
+            if top_locations:
+                # Find transactions from top locations
+                top_location_txns = df[df['Location'].isin(top_locations)]
+                
+                # Add a location insights entry even if not truly an anomaly
+                anomalies.append({
+                    'type': 'location_insights',
+                    'severity': 'low',
+                    'count': len(top_location_txns),
+                    'top_locations': top_locations,
+                    'location_distribution': {loc: int(count) for loc, count in location_counts.head(5).items()},
+                    'data': top_location_txns['TransactionID'].tolist() if 'TransactionID' in top_location_txns.columns else [],
+                    'details': f"Top transaction locations: {', '.join(top_locations)}"
+                })
+        
+        # If no anomalies were found, create at least one insight from the data
+        if not anomalies and not df.empty:
+            # Create a general insight based on transaction count
+            txn_count = len(df)
+            
+            # Get some basic stats if available
+            avg_amount = df['TransactionAmount'].mean() if 'TransactionAmount' in df.columns else None
+            locations = df['Location'].unique().tolist() if 'Location' in df.columns else []
+            
+            details = f"Analyzed {txn_count} transactions"
+            if avg_amount is not None:
+                details += f" with average amount {avg_amount:.2f}"
+            if locations:
+                details += f" from {len(locations)} locations"
+            
+            anomalies.append({
+                'type': 'transactions_overview',
+                'severity': 'low',
+                'count': txn_count,
+                'avg_amount': float(avg_amount) if avg_amount is not None else None,
+                'locations': locations[:5],  # Limit to first 5 locations
+                'data': df['TransactionID'].sample(min(5, len(df))).tolist() if 'TransactionID' in df.columns else [],
+                'details': details
+            })
+        
         # Return all detected anomalies
         return anomalies
     
@@ -223,6 +269,55 @@ class DirectDataAnalyzer:
         """
         alerts = []
         timestamp = datetime.datetime.now().isoformat()
+        
+        # Add a general banking insights alert based on the uploaded data
+        try:
+            if not data_df.empty and len(data_df) > 0:
+                # Create a general banking insights alert from the uploaded data
+                general_insight = {
+                    'id': f"general_insight_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
+                    'timestamp': timestamp,
+                    'type': 'general_insight',
+                    'severity': 'low',
+                    'raw_anomaly': {
+                        'type': 'general_insight',
+                        'count': len(data_df),
+                        'details': f"Analysis of {len(data_df)} uploaded transaction records"
+                    }
+                }
+                
+                # Generate general insights using RAG
+                try:
+                    # Create a summary of the data for context
+                    transaction_count = len(data_df)
+                    avg_amount = data_df['TransactionAmount'].mean() if 'TransactionAmount' in data_df.columns else 0
+                    
+                    locations = data_df['Location'].unique().tolist() if 'Location' in data_df.columns else []
+                    location_summary = f"from locations: {', '.join(locations[:5])}" if locations else ""
+                    
+                    # Create a query for general insights
+                    query = f"Generate a general banking operations overview for {transaction_count} transactions with average amount {avg_amount:.2f} {location_summary}"
+                    
+                    # Use RAG to generate insights
+                    general_content = generate_alert(query=query)
+                    
+                    # Add content to general insight
+                    general_insight['title'] = general_content.get('title', "Banking Operations Overview")
+                    general_insight['description'] = general_content.get('description', f"Analysis of {transaction_count} transactions with average amount {avg_amount:.2f}")
+                    general_insight['recommended_actions'] = general_content.get('recommended_actions', [])
+                    
+                    # Add to alerts
+                    alerts.append(general_insight)
+                    logger.info("Generated general banking insights from uploaded data")
+                except Exception as e:
+                    logger.error(f"Error generating general banking insights: {e}")
+                    # Create a basic general insight without RAG
+                    general_insight['title'] = "Banking Operations Overview"
+                    general_insight['description'] = f"Analysis of {len(data_df)} uploaded transaction records."
+                    general_insight['recommended_actions'] = ["Review transaction patterns", "Monitor for additional anomalies"]
+                    alerts.append(general_insight)
+        except Exception as e:
+            logger.error(f"Error creating general insights alert: {e}")
         
         # Process each anomaly
         for anomaly in anomalies:
@@ -243,8 +338,16 @@ class DirectDataAnalyzer:
                 related_txns = data_df[data_df['TransactionID'].isin(txn_ids)]
                 
                 if not related_txns.empty:
+                    # Get the locations for better context
+                    locations = related_txns['Location'].unique().tolist() if 'Location' in related_txns.columns else []
+                    location_info = f" at {', '.join(locations)}" if locations else ""
+                    
                     # Convert to dict for serialization
                     alert['related_transactions'] = related_txns.head(5).to_dict('records')
+                    
+                    # Add location context
+                    if location_info:
+                        anomaly['location_info'] = location_info
             
             # Generate alert content using RAG
             try:
