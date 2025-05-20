@@ -155,7 +155,7 @@ def generate_custom_alert(query, alert_type, branch=None, compare_with=None, tim
 # UI Components
 def display_sidebar():
     st.sidebar.title("Navigation")
-    pages = ["Dashboard", "Alerts", "Data Management", "Custom Analysis"]
+    pages = ["Dashboard", "Alerts", "Data Management", "Custom Analysis", "Alerts Timeline"]
     selected_page = st.sidebar.radio("Go to", pages)
     
     st.sidebar.markdown("---")
@@ -584,6 +584,332 @@ def render_data_summary():
     except Exception as e:
         st.error(f"Error loading data version information: {str(e)}")
 
+def alerts_timeline_page():
+    st.title("Alerts Timeline")
+    st.subheader("Monthly Alert Trends")
+    
+    # Initialize session state for the process if not exists
+    if 'process_running' not in st.session_state:
+        st.session_state.process_running = False
+    if 'auto_mode' not in st.session_state:
+        st.session_state.auto_mode = False
+    if 'current_month' not in st.session_state:
+        st.session_state.current_month = 0  # Start with no month
+    if 'months_loaded' not in st.session_state:
+        st.session_state.months_loaded = []
+    if 'alert_data' not in st.session_state:
+        st.session_state.alert_data = []
+    if 'threshold_alerts' not in st.session_state:
+        st.session_state.threshold_alerts = []
+    if 'last_auto_load_time' not in st.session_state:
+        st.session_state.last_auto_load_time = time.time()
+    if 'chart_data' not in st.session_state:
+        st.session_state.chart_data = None
+    if 'pending_month_queue' not in st.session_state:
+        st.session_state.pending_month_queue = []  # Queue of months to load
+    
+    # Create placeholders for the chart and status
+    chart_placeholder = st.empty()
+    status_placeholder = st.empty()
+    progress_placeholder = st.empty()
+    month_loading_placeholder = st.empty()
+    countdown_placeholder = st.empty()
+    alerts_placeholder = st.empty()
+    
+    # Set threshold for alerts
+    threshold = st.slider("Alert Threshold", min_value=10, max_value=50, value=30, step=5)
+    
+    # Month name mapping
+    month_names = {
+        '1-25': 'January 2025',
+        '2-25': 'February 2025',
+        '3-25': 'March 2025',
+        '4-25': 'April 2025',
+        '5-25': 'May 2025'
+    }
+    
+    months = ['1-25', '2-25', '3-25', '4-25', '5-25']
+    
+    # Simple function to check if a file exists without loading it
+    def check_file_exists(month):
+        data_dir = "data/monthly_alerts"
+        file_path = os.path.join(data_dir, f"{month}.csv")
+        return os.path.exists(file_path)
+    
+    # Verify all months have data files
+    missing_files = []
+    for month in months:
+        if not check_file_exists(month):
+            missing_files.append(month)
+    
+    if missing_files:
+        st.error(f"Missing data files for: {', '.join(missing_files)}. Please run create_monthly_data.py first.")
+    
+    # Function to load and process a single month's data
+    def process_single_month(month_idx):
+        if month_idx >= len(months):
+            return False
+            
+        month = months[month_idx]
+        data_dir = "data/monthly_alerts"  # Directory containing monthly CSV files
+        
+        # Create directory if it doesn't exist
+        os.makedirs(data_dir, exist_ok=True)
+        
+        file_path = os.path.join(data_dir, f"{month}.csv")
+        if os.path.exists(file_path):
+            try:
+                # Update status with highlights to make it more noticeable
+                month_loading_placeholder.success(f"📊 NOW LOADING: {month_names[month]} data...")
+                
+                # Read and process the data
+                df = pd.read_csv(file_path)
+                df['month'] = month_names[month]  # Use full month name
+                
+                # Check for threshold alerts
+                threshold_breaches = df[df['alert_count'] > threshold]
+                if not threshold_breaches.empty:
+                    for _, row in threshold_breaches.iterrows():
+                        alert = {
+                            'date': row['date'],
+                            'month': month_names[month],
+                            'alert_count': row['alert_count'],
+                            'threshold': threshold
+                        }
+                        st.session_state.threshold_alerts.append(alert)
+                
+                # Add to alert data and track loaded months
+                st.session_state.alert_data.append(df)
+                st.session_state.months_loaded.append(month)
+                
+                # Update chart after adding this month - store in session state to avoid rerenders
+                update_chart(highlight_month=month_names[month])
+                
+                # Reset auto-load timer - this ensures we display for 4 seconds before loading the next month
+                st.session_state.last_auto_load_time = time.time()
+                
+                # Show success message
+                # month_loading_placeholder.success(f"✅ LOADED: {month_names[month]} data will display for 4 seconds before next month")
+                
+                return True
+            except Exception as e:
+                st.error(f"Error processing {month}.csv: {str(e)}")
+                return False
+        else:
+            st.error(f"File not found: {file_path}")
+            return False
+    
+    # Function to update the line chart
+    def update_chart(highlight_month=None):
+        if st.session_state.alert_data:
+            # Combine all monthly data
+            combined_data = pd.concat(st.session_state.alert_data)
+            
+            # Create the line chart
+            fig, ax = plt.subplots(figsize=(12, 6))
+            
+            # Plot each month with different line styles for better visibility
+            for i, month in enumerate(st.session_state.months_loaded):
+                month_data = combined_data[combined_data['month'] == month_names[month]]
+                
+                # Highlight the latest month added
+                if month_names[month] == highlight_month:
+                    # Make the new month's line bolder and a different line style
+                    sns.lineplot(
+                        data=month_data, 
+                        x='date', 
+                        y='alert_count', 
+                        label=f"{month_names[month]} (New)", 
+                        ax=ax,
+                        color=f'C{i}',
+                        linewidth=3,
+                        linestyle='-'
+                    )
+                else:
+                    sns.lineplot(
+                        data=month_data, 
+                        x='date', 
+                        y='alert_count', 
+                        label=month_names[month], 
+                        ax=ax,
+                        color=f'C{i}',
+                        linewidth=1.5
+                    )
+            
+            ax.set_title('Monthly Alert Trends')
+            ax.set_xlabel('Date')
+            ax.set_ylabel('Number of Alerts')
+            
+            # Add threshold line
+            ax.axhline(y=threshold, color='r', linestyle='--', alpha=0.5, label=f'Threshold ({threshold})')
+            
+            plt.xticks(rotation=45)
+            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            plt.tight_layout()
+            
+            # Display the chart
+            chart_placeholder.pyplot(fig)
+            
+            # Store figure in session state to avoid recreation
+            st.session_state.chart_data = fig
+            
+            # Display threshold alerts table
+            if st.session_state.threshold_alerts:
+                alerts_df = pd.DataFrame(st.session_state.threshold_alerts)
+                alerts_df = alerts_df.sort_values('date', ascending=False)
+                alerts_placeholder.subheader("Threshold Alerts")
+                alerts_placeholder.dataframe(
+                    alerts_df,
+                    column_config={
+                        "date": "Date",
+                        "month": "Month",
+                        "alert_count": st.column_config.NumberColumn(
+                            "Alert Count",
+                            help="Number of alerts",
+                            format="%d"
+                        ),
+                        "threshold": st.column_config.NumberColumn(
+                            "Threshold",
+                            help="Alert threshold",
+                            format="%d"
+                        )
+                    },
+                    hide_index=True
+                )
+    
+    # Helper function to queue up the next month for loading
+    def queue_next_month():
+        if st.session_state.current_month < len(months):
+            st.session_state.pending_month_queue.append(st.session_state.current_month)
+            return True
+        return False
+    
+    # Process any pending months in the queue
+    if st.session_state.pending_month_queue and st.session_state.process_running:
+        month_idx = st.session_state.pending_month_queue.pop(0)
+        if process_single_month(month_idx):
+            st.session_state.current_month += 1
+            if st.session_state.current_month < len(months):
+                progress_placeholder.progress(st.session_state.current_month/len(months), 
+                                        f"Loaded {st.session_state.current_month} of {len(months)} months")
+            else:
+                progress_placeholder.progress(1.0, "All months loaded!")
+                status_placeholder.success('Monthly data processing completed!')
+                st.session_state.process_running = False
+                st.session_state.auto_mode = False
+    
+    # Control buttons in three columns
+    start_stop_col, step_col, auto_col = st.columns([1, 1, 1])
+    
+    with start_stop_col:
+        if st.button('Start Process' if not st.session_state.process_running else 'Stop Process'):
+            st.session_state.process_running = not st.session_state.process_running
+            
+            if st.session_state.process_running:
+                # Clear previous data
+                st.session_state.alert_data = []
+                st.session_state.threshold_alerts = []
+                st.session_state.current_month = 0
+                st.session_state.months_loaded = []
+                st.session_state.auto_mode = False
+                st.session_state.pending_month_queue = []
+                st.session_state.chart_data = None
+                
+                # Queue first month immediately
+                status_placeholder.info('📈 Processing monthly data... Watch as each month gets added!')
+                process_single_month(0)
+                st.session_state.current_month = 1
+                
+                # Update progress
+                progress_placeholder.progress(1/len(months), f"Loaded 1 of {len(months)} months")
+            else:
+                st.session_state.auto_mode = False
+                st.session_state.pending_month_queue = []
+                status_placeholder.info('Process stopped.')
+    
+    with step_col:
+        next_month_button = st.button('Load Next Month', 
+                            disabled=(not st.session_state.process_running or 
+                                      st.session_state.current_month >= len(months)))
+        if next_month_button:
+            # Turn off auto mode when manually stepping
+            st.session_state.auto_mode = False
+            
+            # Queue next month for immediate loading
+            queue_next_month()
+            st.rerun()
+    
+    # Special auto-load button that doesn't require rerun cycles
+    with auto_col:
+        if st.session_state.auto_mode:
+            auto_button_label = 'Stop Auto-Load'
+            if st.button(auto_button_label, key="auto_load_button"):
+                st.session_state.auto_mode = False
+                status_placeholder.info('Auto-loading mode deactivated.')
+                st.session_state.pending_month_queue = []  # Clear any pending loads
+        else:
+            auto_button_label = 'Auto-Load All Months'
+            auto_disabled = not st.session_state.process_running or st.session_state.current_month >= len(months)
+            
+            if st.button(auto_button_label, disabled=auto_disabled, key="auto_load_button"):
+                st.session_state.auto_mode = True
+                status_placeholder.info('🤖 Auto-loading all remaining months sequentially.')
+                
+                # Queue all remaining months in sequence
+                for idx in range(st.session_state.current_month, len(months)):
+                    # Add each month with a 4-second delay
+                    st.session_state.pending_month_queue.append(idx)
+                
+                # Start first month immediately if queue is not empty
+                if st.session_state.pending_month_queue:
+                    st.rerun()
+    
+    # Display current status
+    if not st.session_state.process_running and st.session_state.current_month == 0:
+        status_placeholder.info('Click "Start Process" to begin loading monthly data.')
+    
+    # Always display the chart if we have it (no matter what else is happening)
+    if st.session_state.chart_data is not None:
+        chart_placeholder.pyplot(st.session_state.chart_data)
+    elif st.session_state.alert_data:
+        update_chart()
+    else:
+        chart_placeholder.info("No data loaded yet. Click 'Start Process' to begin.")
+    
+    # Display countdown info if auto-mode is active and we're showing a month
+    if st.session_state.auto_mode and st.session_state.process_running and st.session_state.current_month < len(months):
+        # Calculate time until next month loads
+        current_time = time.time()
+        elapsed_time = current_time - st.session_state.last_auto_load_time
+        remaining_time = max(0, 4.0 - elapsed_time)
+        
+        if remaining_time <= 0 and st.session_state.pending_month_queue:
+            countdown_placeholder.info("Loading next month...")
+            st.rerun()
+        else:
+            if st.session_state.pending_month_queue:
+                next_idx = st.session_state.pending_month_queue[0]
+                next_month = months[next_idx]
+                countdown_placeholder.info(
+                    f"⏱️ Current data displayed for {elapsed_time:.1f}s. "
+                    f"Next month ({month_names[next_month]}) loads in {remaining_time:.1f}s"
+                )
+                time.sleep(1)
+                st.rerun()
+    
+    # Display help
+    with st.expander("How to Use This Chart"):
+        st.markdown("""
+        1. Click **Start Process** to begin loading the first month of data
+        2. Choose one of these options:
+           - Click **Load Next Month** to load each month manually one at a time
+           - Click **Auto-Load All Months** to automatically load all remaining months in sequence
+        3. Watch as each month's data appears on the chart
+        4. The progress bar shows how many months have been loaded
+        5. The currently loading month is highlighted in the chart
+        6. The threshold alerts table shows any data points that exceed your threshold
+        """)
+
 # Main app
 def main():
     # Apply custom CSS
@@ -629,6 +955,9 @@ def main():
             background-color: rgba(209, 213, 219, 0.2);
             border-radius: 0.25rem;
             margin-bottom: 0.25rem;
+        }
+        .stButton>button {
+            width: 100%;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -797,6 +1126,8 @@ def main():
                     render_alert_card(custom_alert)
                 except Exception as e:
                     st.error(f"Error generating custom alert: {str(e)}")
+    elif selected_page == "Alerts Timeline":
+        alerts_timeline_page()
 
 if __name__ == "__main__":
     main() 

@@ -70,6 +70,12 @@ class DataVersionManager:
         
         # Initialize or load version metadata
         self.metadata = self._load_metadata()
+        
+        # Initialize data processor
+        self.data_processor = TransactionDataProcessor(
+            raw_data_path=self.raw_data_dir,
+            processed_data_path=self.processed_data_dir
+        )
     
     def _load_metadata(self) -> Dict[str, Any]:
         """
@@ -267,19 +273,13 @@ class DataVersionManager:
                     merged_data = new_data
                     logger.info(f"No existing data found. Using only new data ({len(merged_data)} records)")
                 
-                # Initialize data processor
-                processor = TransactionDataProcessor(
-                    raw_data_path=self.raw_data_dir,
-                    processed_data_path=self.processed_data_dir
-                )
-                
                 # Process the merged data
-                processor.data = merged_data
-                processor.clean_data()
-                processor.create_features()
+                self.data_processor.data = merged_data
+                self.data_processor.clean_data()
+                self.data_processor.create_features()
                 
                 # Save processed data
-                saved_files = processor.save_processed_data()
+                saved_files = self.data_processor.save_processed_data()
                 
                 # Copy processed files to version directory
                 for file_type, file_path in saved_files.items():
@@ -312,19 +312,13 @@ class DataVersionManager:
                 new_data = pd.read_csv(raw_data_file)
                 logger.info(f"Loaded new data with {len(new_data)} records")
                 
-                # Initialize data processor
-                processor = TransactionDataProcessor(
-                    raw_data_path=self.raw_data_dir,
-                    processed_data_path=self.processed_data_dir
-                )
-                
                 # Process the new data
-                processor.data = new_data
-                processor.clean_data()
-                processor.create_features()
+                self.data_processor.data = new_data
+                self.data_processor.clean_data()
+                self.data_processor.create_features()
                 
                 # Save processed data
-                saved_files = processor.save_processed_data()
+                saved_files = self.data_processor.save_processed_data()
                 
                 # Copy processed files to version directory
                 for file_type, file_path in saved_files.items():
